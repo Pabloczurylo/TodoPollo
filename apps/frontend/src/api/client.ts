@@ -10,7 +10,8 @@ import type {
   CreateItemPedidoDto,
 } from '@todopolloyplus/shared';
 
-export const API_BASE = 'http://localhost:3001/api';
+const RAW_API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\/+$/, '');
+export const API_BASE = RAW_API_URL.endsWith('/api') ? RAW_API_URL : `${RAW_API_URL}/api`;
 
 // ── Generic helper ──────────────────────────────────────────────
 async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
