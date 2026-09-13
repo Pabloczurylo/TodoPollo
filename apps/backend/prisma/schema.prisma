@@ -1,0 +1,115 @@
+// Prisma configuration for TodoPollo y Más
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// -------------------------------------------------------------
+// 1. PRODUCCIÓN: Registro de Cajones de pechugas
+// -------------------------------------------------------------
+model Cajon {
+  id               String   @id @default(uuid())
+  fecha            DateTime @default(now())
+  costoTotal       Float    @map("costo_total")
+  unidadesRendidas Int?     @map("unidades_rendidas")
+  proveedor        String?
+  notas            String?
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  // Relación con los movimientos de stock que generó este cajón
+  movimientos      MovimientoStock[]
+
+  @@map("cajones")
+}
+
+// -------------------------------------------------------------
+// 2. STOCK: Inventario Central
+// -------------------------------------------------------------
+model Stock {
+  id             String   @id @default(uuid())
+  cantidadActual Int      @default(0) @map("cantidad_actual")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("stock")
+}
+
+enum TipoMovimientoStock {
+  INGRESO_PRODUCCION
+  EGRESO_PEDIDO
+  AJUSTE_MANUAL
+}
+
+model MovimientoStock {
+  id               String              @id @default(uuid())
+  fecha            DateTime            @default(now())
+  tipo             TipoMovimientoStock
+  cantidad         Int                 // Positivo para ingresos, negativo para egresos
+  balancePosterior Int                 @map("balance_posterior")
+  motivo           String?
+  
+  cajonId          String?             @map("cajon_id")
+  cajon            Cajon?              @relation(fields: [cajonId], references: [id], onDelete: SetNull)
+
+  pedidoId         String?             @map("pedido_id")
+  pedido           Pedido?             @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+
+  createdAt        DateTime            @default(now()) @map("created_at")
+
+  @@map("movimientos_stock")
+}
+
+// -------------------------------------------------------------
+// 3. PEDIDOS: Registro de Ventas
+// -------------------------------------------------------------
+enum EstadoPedido {
+  PENDIENTE
+  EN_PREPARACION
+  ENTREGADO
+  CANCELADO
+}
+
+model Pedido {
+  id                   String            @id @default(uuid())
+  clienteNombre        String            @map("cliente_nombre")
+  cantidadHamburguesas Int               @map("cantidad_hamburguesas")
+  precioTotal          Float             @map("precio_total")
+  estado               EstadoPedido      @default(PENDIENTE)
+  fechaPedido          DateTime          @default(now()) @map("fecha_pedido")
+  fechaEntrega         DateTime?         @map("fecha_entrega")
+  notas                String?
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+
+  movimientos          MovimientoStock[]
+
+  @@map("pedidos")
+}
+
+// -------------------------------------------------------------
+// 4. GASTOS: Registro de Costos Extra e Insumos
+// -------------------------------------------------------------
+enum CategoriaGasto {
+  SEPARADORES_BOLSAS
+  CONDIMENTOS_INSUMOS
+  SERVICIOS_LUZ_GAS
+  ENVIO_LOGISTICA
+  OTROS
+}
+
+model Gasto {
+  id        String          @id @default(uuid())
+  fecha     DateTime        @default(now())
+  concepto  String
+  categoria CategoriaGasto  @default(OTROS)
+  monto     Float
+  notas     String?
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  @@map("gastos")
+}

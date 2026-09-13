@@ -1,0 +1,21 @@
+{
+  "name": "@todopolloyplus/shared",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tipos TypeScript, interfaces y utilidades compartidas entre frontend y backend",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

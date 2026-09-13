@@ -1,0 +1,25 @@
+{
+  "name": "todopolloyplus-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sistema de gestión integral para negocio de hamburguesas de pollo crudas - Mobile First",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"npm run dev -w @todopolloyplus/backend\" \"npm run dev -w @todopolloyplus/frontend\"",
+    "dev:backend": "npm run dev -w @todopolloyplus/backend",
+    "dev:frontend": "npm run dev -w @todopolloyplus/frontend",
+    "build": "npm run build --workspaces",
+    "build:shared": "npm run build -w @todopolloyplus/shared",
+    "build:backend": "npm run build -w @todopolloyplus/backend",
+    "build:frontend": "npm run build -w @todopolloyplus/frontend",
+    "prisma:generate": "npm run prisma:generate -w @todopolloyplus/backend",
+    "prisma:migrate": "npm run prisma:migrate -w @todopolloyplus/backend",
+    "prisma:studio": "npm run prisma:studio -w @todopolloyplus/backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

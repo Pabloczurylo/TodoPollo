@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Package,
   Layers,
@@ -14,105 +14,209 @@ import {
   Trash2,
   AlertTriangle,
   Info,
-  X
+  X,
+  Loader2,
 } from 'lucide-react';
 import {
   formatCurrency,
   formatDate,
   getEstadoPedidoLabel,
   getCategoriaGastoLabel,
-  type EstadoPedido,
+  type Cajon,
+  type Pedido,
+  type Gasto,
   type CategoriaGasto,
 } from '@todopolloyplus/shared';
 
+const API_BASE = 'http://localhost:3001/api';
+
 type Tab = 'stock' | 'produccion' | 'pedidos' | 'gastos';
+type Periodo = 'semana' | 'mes';
 
-interface DemoCajon {
-  id: string;
-  fechaCompra: string;
-  costoTotal: number;
-  unidadesRendidas: number | null;
-  proveedor?: string;
-}
+// ── Componente de reporte de seguimiento ──────────────────────
+function ReporteSeguimiento({
+  cajones,
+  pedidos,
+  gastos,
+  formatCurrency,
+}: {
+  cajones: Cajon[];
+  pedidos: Pedido[];
+  gastos: Gasto[];
+  formatCurrency: (n: number) => string;
+}) {
+  const [periodo, setPeriodo] = useState<Periodo>('mes');
 
-interface DemoPedido {
-  id: string;
-  clienteNombre: string;
-  cantidadHamburguesas: number;
-  precioTotal: number;
-  estado: EstadoPedido;
-  fechaPedido: string;
-  fechaEntrega?: string;
-}
+  const now = new Date();
+  const desde = new Date(now);
+  if (periodo === 'semana') {
+    desde.setDate(now.getDate() - 7);
+  } else {
+    desde.setDate(1);
+    desde.setHours(0, 0, 0, 0);
+  }
 
-interface DemoGasto {
-  id: string;
-  concepto: string;
-  monto: number;
-  categoria: CategoriaGasto;
-  fecha: string;
+  const inRange = (fecha: string | Date) => new Date(fecha) >= desde;
+
+  const ventas = pedidos
+    .filter(p => p.estado === 'ENTREGADO' && inRange(p.fechaPedido))
+    .reduce((acc, p) => acc + p.precioTotal, 0);
+
+  const gastoCajones = cajones
+    .filter(c => inRange(c.fecha))
+    .reduce((acc, c) => acc + c.costoTotal, 0);
+
+  const gastoInsumos = gastos
+    .filter(g => inRange(g.fecha))
+    .reduce((acc, g) => acc + g.monto, 0);
+
+  const totalEgresos = gastoCajones + gastoInsumos;
+  const balancePeriodo = ventas - totalEgresos;
+  const positivo = balancePeriodo >= 0;
+
+  // Barras proporcionales
+  const maxVal = Math.max(ventas, gastoCajones, gastoInsumos, 1);
+  const pct = (v: number) => `${Math.round((v / maxVal) * 100)}%`;
+
+  const labelPeriodo = periodo === 'semana' ? 'últimos 7 días' : 'este mes';
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 md:p-5">
+      {/* Header con toggle */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-sm font-bold text-slate-800">Seguimiento Financiero</h3>
+          <p className="text-[11px] text-slate-400 mt-0.5">{labelPeriodo}</p>
+        </div>
+        <div className="flex bg-slate-100 rounded-lg p-0.5 text-[11px] font-semibold">
+          <button
+            onClick={() => setPeriodo('semana')}
+            className={`px-3 py-1.5 rounded-md transition ${periodo === 'semana' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Semana
+          </button>
+          <button
+            onClick={() => setPeriodo('mes')}
+            className={`px-3 py-1.5 rounded-md transition ${periodo === 'mes' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Mes
+          </button>
+        </div>
+      </div>
+
+      {/* Barras */}
+      <div className="space-y-3">
+        {/* Ventas */}
+        <div>
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-xs text-slate-600 font-medium flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+              Ventas cobradas
+            </span>
+            <span className="text-xs font-bold text-emerald-700">{formatCurrency(ventas)}</span>
+          </div>
+          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+              style={{ width: ventas > 0 ? pct(ventas) : '0%' }}
+            />
+          </div>
+        </div>
+
+        {/* Gasto cajones */}
+        <div>
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-xs text-slate-600 font-medium flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-orange-400 inline-block"></span>
+              Cajones de pollo
+            </span>
+            <span className="text-xs font-bold text-orange-600">{formatCurrency(gastoCajones)}</span>
+          </div>
+          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-orange-400 rounded-full transition-all duration-500"
+              style={{ width: gastoCajones > 0 ? pct(gastoCajones) : '0%' }}
+            />
+          </div>
+        </div>
+
+        {/* Gasto insumos */}
+        <div>
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-xs text-slate-600 font-medium flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
+              Insumos / Gastos
+            </span>
+            <span className="text-xs font-bold text-rose-600">{formatCurrency(gastoInsumos)}</span>
+          </div>
+          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-rose-500 rounded-full transition-all duration-500"
+              style={{ width: gastoInsumos > 0 ? pct(gastoInsumos) : '0%' }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Balance del período */}
+      <div className={`mt-4 pt-3 border-t flex items-center justify-between ${positivo ? 'border-emerald-100' : 'border-rose-100'}`}>
+        <span className="text-xs text-slate-500 font-medium">
+          Balance del período
+        </span>
+        <span className={`text-sm font-extrabold ${positivo ? 'text-emerald-700' : 'text-rose-700'}`}>
+          {balancePeriodo >= 0 ? '+' : ''}{formatCurrency(balancePeriodo)}
+        </span>
+      </div>
+
+      {ventas === 0 && gastoCajones === 0 && gastoInsumos === 0 && (
+        <p className="text-xs text-slate-400 text-center mt-3">Sin registros en {labelPeriodo}</p>
+      )}
+    </div>
+  );
 }
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('stock');
 
-  // Estado local para demostración interactiva
-  const [stockActual, setStockActual] = useState(480);
+  // --- Estado de datos desde la API ---
+  const [stockActual, setStockActual] = useState(0);
+  const [cajones, setCajones] = useState<Cajon[]>([]);
+  const [pedidos, setPedidos] = useState<Pedido[]>([]);
+  const [gastos, setGastos] = useState<Gasto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [cajones, setCajones] = useState<DemoCajon[]>([
-    {
-      id: 'c1',
-      fechaCompra: new Date().toISOString().slice(0, 10),
-      costoTotal: 95000,
-      unidadesRendidas: 240,
-      proveedor: 'Distribuidora Avícola Sur',
-    },
-    {
-      id: 'c2',
-      fechaCompra: new Date(Date.now() - 86400000 * 2).toISOString().slice(0, 10),
-      costoTotal: 98000,
-      unidadesRendidas: null,
-      proveedor: 'Granja San Luis',
-    },
-  ]);
+  // --- Carga de datos desde la API ---
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [stockRes, cajonesRes, pedidosRes, gastosRes] = await Promise.all([
+        fetch(`${API_BASE}/stock`),
+        fetch(`${API_BASE}/cajones`),
+        fetch(`${API_BASE}/pedidos`),
+        fetch(`${API_BASE}/gastos`),
+      ]);
+      const [stockData, cajonesData, pedidosData, gastosData] = await Promise.all([
+        stockRes.json(),
+        cajonesRes.json(),
+        pedidosRes.json(),
+        gastosRes.json(),
+      ]);
+      if (stockData.success) setStockActual(stockData.data.stock.cantidadActual);
+      if (cajonesData.success) setCajones(cajonesData.data);
+      if (pedidosData.success) setPedidos(pedidosData.data);
+      if (gastosData.success) setGastos(gastosData.data);
+    } catch {
+      setError('No se pudo conectar con el servidor. ¿Está corriendo el backend en el puerto 3001?');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const [pedidos, setPedidos] = useState<DemoPedido[]>([
-    {
-      id: 'p1',
-      clienteNombre: 'Mariana Gomez',
-      cantidadHamburguesas: 30,
-      precioTotal: 25500,
-      estado: 'PENDIENTE',
-      fechaPedido: new Date().toISOString(),
-      fechaEntrega: new Date(Date.now() + 86400000 * 2).toISOString().slice(0, 10),
-    },
-    {
-      id: 'p2',
-      clienteNombre: 'Hamburguesería El Puente',
-      cantidadHamburguesas: 100,
-      precioTotal: 80000,
-      estado: 'ENTREGADO',
-      fechaPedido: new Date(Date.now() - 86400000).toISOString(),
-    },
-  ]);
+  useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  const [gastos, setGastos] = useState<DemoGasto[]>([
-    {
-      id: 'g1',
-      concepto: 'Separadores 2000 unidades',
-      monto: 14500,
-      categoria: 'SEPARADORES_BOLSAS',
-      fecha: new Date().toISOString(),
-    },
-    {
-      id: 'g2',
-      concepto: 'Bolsas tipo camiseta 500u',
-      monto: 8200,
-      categoria: 'SEPARADORES_BOLSAS',
-      fecha: new Date(Date.now() - 86400000 * 3).toISOString(),
-    },
-  ]);
-
+  // --- Modal ---
   interface ModalConfig {
     isOpen: boolean;
     title: string;
@@ -143,11 +247,10 @@ export default function App() {
     });
   };
 
-  // Form states
+  // --- Form states ---
   const [nuevoCajonCosto, setNuevoCajonCosto] = useState<string>('');
   const [nuevoCajonFecha, setNuevoCajonFecha] = useState<string>(new Date().toISOString().slice(0, 10));
   const [nuevoCajonProveedor, setNuevoCajonProveedor] = useState<string>('');
-  // Estado para edición inline de unidades rendidas
   const [editandoUnidades, setEditandoUnidades] = useState<string | null>(null);
   const [unidadesEdit, setUnidadesEdit] = useState<string>('');
 
@@ -160,8 +263,7 @@ export default function App() {
   const [nuevoGastoMonto, setNuevoGastoMonto] = useState<string>('');
   const [nuevoGastoCategoria, setNuevoGastoCategoria] = useState<CategoriaGasto>('SEPARADORES_BOLSAS');
 
-  // Cálculos dinámicos
-
+  // --- Cálculos derivados ---
   const totalVentas = pedidos
     .filter((p) => p.estado === 'ENTREGADO')
     .reduce((acc, p) => acc + p.precioTotal, 0);
@@ -169,66 +271,81 @@ export default function App() {
   const totalGastos = gastos.reduce((acc, g) => acc + g.monto, 0);
   const pedidosPendientesCount = pedidos.filter((p) => p.estado === 'PENDIENTE').length;
 
-  // Handlers
-  const handleRegistrarCajon = (e: React.FormEvent) => {
+  // --- Handlers con API ---
+  const handleRegistrarCajon = async (e: React.FormEvent) => {
     e.preventDefault();
     const costo = parseFloat(nuevoCajonCosto);
     if (!costo || !nuevoCajonFecha) return;
-
-    const nuevo: DemoCajon = {
-      id: `c_${Date.now()}`,
-      fechaCompra: nuevoCajonFecha,
-      costoTotal: costo,
-      unidadesRendidas: null,
-      proveedor: nuevoCajonProveedor || undefined,
-    };
-
-    setCajones([nuevo, ...cajones]);
-    setNuevoCajonCosto('');
-    setNuevoCajonProveedor('');
-    showAlert('¡Cajón Registrado!', 'Ingresá las hamburguesas rendidas cuando estén listas.', 'success');
+    try {
+      const res = await fetch(`${API_BASE}/cajones`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          costoTotal: costo,
+          fecha: nuevoCajonFecha,
+          proveedor: nuevoCajonProveedor || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      await fetchAll();
+      setNuevoCajonCosto('');
+      setNuevoCajonProveedor('');
+      showAlert('¡Cajón Registrado!', 'Ingresá las hamburguesas rendidas cuando estén listas.', 'success');
+    } catch (err: any) {
+      showAlert('Error', err.message || 'No se pudo registrar el cajón.', 'error');
+    }
   };
 
-  const handleActualizarUnidades = (id: string) => {
+  const handleActualizarUnidades = async (id: string) => {
     const unidades = parseInt(unidadesEdit);
     if (!unidades || unidades <= 0) return;
-    setCajones((prev) =>
-      prev.map((c) => {
-        if (c.id !== id) return c;
-        const prevUnidades = c.unidadesRendidas ?? 0;
-        setStockActual((s) => s + unidades - prevUnidades);
-        return { ...c, unidadesRendidas: unidades };
-      })
-    );
-    setEditandoUnidades(null);
-    setUnidadesEdit('');
+    try {
+      const res = await fetch(`${API_BASE}/cajones/${id}/unidades`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unidadesRendidas: unidades }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      await fetchAll();
+      setEditandoUnidades(null);
+      setUnidadesEdit('');
+    } catch (err: any) {
+      showAlert('Error', err.message || 'No se pudo actualizar el cajón.', 'error');
+    }
   };
 
-  const handleCrearPedido = (e: React.FormEvent) => {
+  const handleCrearPedido = async (e: React.FormEvent) => {
     e.preventDefault();
     const cantidad = parseInt(nuevoPedidoCantidad);
     const precio = parseFloat(nuevoPedidoPrecio);
     if (!nuevoPedidoCliente || !cantidad || !precio) return;
-
-    const nuevo: DemoPedido = {
-      id: `p_${Date.now()}`,
-      clienteNombre: nuevoPedidoCliente,
-      cantidadHamburguesas: cantidad,
-      precioTotal: precio,
-      estado: 'PENDIENTE',
-      fechaPedido: new Date().toISOString(),
-      fechaEntrega: nuevoPedidoFechaEntrega || undefined,
-    };
-
-    setPedidos([nuevo, ...pedidos]);
-    setNuevoPedidoCliente('');
-    setNuevoPedidoCantidad('');
-    setNuevoPedidoPrecio('');
-    setNuevoPedidoFechaEntrega('');
-    showAlert('Pedido Registrado', `El pedido para ${nuevo.clienteNombre} quedó en estado Pendiente.`, 'success');
+    try {
+      const res = await fetch(`${API_BASE}/pedidos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clienteNombre: nuevoPedidoCliente,
+          cantidadHamburguesas: cantidad,
+          precioTotal: precio,
+          fechaEntrega: nuevoPedidoFechaEntrega || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      await fetchAll();
+      setNuevoPedidoCliente('');
+      setNuevoPedidoCantidad('');
+      setNuevoPedidoPrecio('');
+      setNuevoPedidoFechaEntrega('');
+      showAlert('Pedido Registrado', `Pedido para ${nuevoPedidoCliente} en estado Pendiente.`, 'success');
+    } catch (err: any) {
+      showAlert('Error', err.message || 'No se pudo registrar el pedido.', 'error');
+    }
   };
 
-  const handleEntregarPedido = (id: string) => {
+  const handleEntregarPedido = async (id: string) => {
     const pedido = pedidos.find((p) => p.id === id);
     if (!pedido || pedido.estado === 'ENTREGADO') return;
 
@@ -236,49 +353,101 @@ export default function App() {
       showAlert('Stock Insuficiente', `Hay ${stockActual} hamburguesas en stock y el pedido requiere ${pedido.cantidadHamburguesas}.`, 'warning');
       return;
     }
-
-    setPedidos(
-      pedidos.map((p) =>
-        p.id === id ? { ...p, estado: 'ENTREGADO' as EstadoPedido } : p
-      )
-    );
-    setStockActual((prev) => prev - pedido.cantidadHamburguesas);
+    try {
+      const res = await fetch(`${API_BASE}/pedidos/${id}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'ENTREGADO' }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      await fetchAll();
+    } catch (err: any) {
+      showAlert('Error', err.message || 'No se pudo entregar el pedido.', 'error');
+    }
   };
 
   const handleEliminarPedido = (id: string) => {
     const pedido = pedidos.find((p) => p.id === id);
     if (!pedido) return;
     showConfirm(
-      '¿Eliminar Pedido?',
-      `Vas a eliminar el pedido de ${pedido.clienteNombre}.${pedido.estado === 'ENTREGADO' ? ' Se restaurarán ' + pedido.cantidadHamburguesas + ' hamburguesas al stock.' : ''}`,
-      () => {
-        if (pedido.estado === 'ENTREGADO') {
-          setStockActual(prev => prev + pedido.cantidadHamburguesas);
-        }
-        setPedidos(prev => prev.filter(p => p.id !== id));
+      '¿Cancelar Pedido?',
+      `Vas a cancelar el pedido de ${pedido.clienteNombre}. Esta acción no se puede deshacer.`,
+      async () => {
         setModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          const res = await fetch(`${API_BASE}/pedidos/${id}/estado`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ estado: 'CANCELADO' }),
+          });
+          const json = await res.json();
+          if (!json.success) throw new Error(json.error);
+          await fetchAll();
+        } catch (err: any) {
+          showAlert('Error', err.message || 'No se pudo cancelar el pedido.', 'error');
+        }
       }
     );
   };
 
-  const handleRegistrarGasto = (e: React.FormEvent) => {
+  const handleRegistrarGasto = async (e: React.FormEvent) => {
     e.preventDefault();
     const monto = parseFloat(nuevoGastoMonto);
     if (!nuevoGastoConcepto || !monto) return;
-
-    const nuevo: DemoGasto = {
-      id: `g_${Date.now()}`,
-      concepto: nuevoGastoConcepto,
-      monto,
-      categoria: nuevoGastoCategoria,
-      fecha: new Date().toISOString(),
-    };
-
-    setGastos([nuevo, ...gastos]);
-    setNuevoGastoConcepto('');
-    setNuevoGastoMonto('');
-    showAlert('Gasto Registrado', '¡El gasto se guardó con éxito!', 'success');
+    try {
+      const res = await fetch(`${API_BASE}/gastos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          concepto: nuevoGastoConcepto,
+          monto,
+          categoria: nuevoGastoCategoria,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      await fetchAll();
+      setNuevoGastoConcepto('');
+      setNuevoGastoMonto('');
+      showAlert('Gasto Registrado', '¡El gasto se guardó con éxito!', 'success');
+    } catch (err: any) {
+      showAlert('Error', err.message || 'No se pudo registrar el gasto.', 'error');
+    }
   };
+
+  // --- Pantalla de carga / error ---
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-slate-50">
+        <div className="flex flex-col items-center gap-3 text-slate-500">
+          <Loader2 size={40} className="animate-spin text-amber-500" />
+          <p className="font-semibold text-sm">Conectando con el servidor...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-slate-50 p-6">
+        <div className="bg-white rounded-2xl shadow-lg border border-rose-200 p-8 max-w-sm w-full text-center">
+          <div className="w-14 h-14 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle size={28} className="text-rose-500" />
+          </div>
+          <h2 className="text-lg font-bold text-slate-800 mb-2">Sin conexión al backend</h2>
+          <p className="text-sm text-slate-500 mb-5">{error}</p>
+          <button
+            onClick={fetchAll}
+            className="bg-amber-500 hover:bg-amber-600 text-white font-bold px-6 py-3 rounded-xl transition w-full"
+          >
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
 
   return (
     <div className="flex flex-col md:flex-row h-screen bg-slate-50 w-full overflow-hidden font-sans text-slate-800">
@@ -376,7 +545,7 @@ export default function App() {
         {/* TAB: STOCK & DASHBOARD */}
         {/* ========================================================= */}
         {activeTab === 'stock' && (
-          <div className="space-y-4">
+          <div className="space-y-4 md:space-y-5">
             {/* Tarjeta de Stock Principal */}
             <div className="bg-gradient-to-br from-amber-500 to-amber-600 rounded-2xl p-5 text-white shadow-lg relative overflow-hidden">
               <div className="absolute right-[-10px] top-[-10px] opacity-10">
@@ -428,24 +597,74 @@ export default function App() {
               </button>
             </div>
 
-            {/* Métricas Resumen */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-              <div className="bg-white p-4 md:p-5 rounded-xl border border-slate-200 shadow-sm">
-                <div className="text-xs md:text-sm text-slate-500 font-medium">Ventas Entregadas</div>
-                <div className="text-lg md:text-2xl font-bold text-emerald-600 mt-1">
-                  {formatCurrency(totalVentas)}
-                </div>
-                <div className="text-[11px] md:text-xs text-slate-400 mt-1">Total acumulado</div>
-              </div>
+            {/* ── Métricas principales ── */}
+            {(() => {
+              const totalCajones = cajones.reduce((acc, c) => acc + c.costoTotal, 0);
+              const balanceNeto = totalVentas - totalCajones - totalGastos;
+              const balancePositivo = balanceNeto >= 0;
 
-              <div className="bg-white p-4 md:p-5 rounded-xl border border-slate-200 shadow-sm">
-                <div className="text-xs md:text-sm text-slate-500 font-medium">Gastos Insumos</div>
-                <div className="text-lg md:text-2xl font-bold text-rose-600 mt-1">
-                  {formatCurrency(totalGastos)}
-                </div>
-                <div className="text-[11px] md:text-xs text-slate-400 mt-1">Bolsas, separadores...</div>
-              </div>
-            </div>
+              return (
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+                    {/* Ventas */}
+                    <div className="bg-white p-4 md:p-5 rounded-xl border border-slate-200 shadow-sm">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                        <span className="text-xs text-slate-500 font-medium">Ventas</span>
+                      </div>
+                      <div className="text-lg md:text-2xl font-bold text-emerald-600">
+                        {formatCurrency(totalVentas)}
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-1">Pedidos entregados</div>
+                    </div>
+
+                    {/* Gasto cajones */}
+                    <div className="bg-white p-4 md:p-5 rounded-xl border border-slate-200 shadow-sm">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <div className="w-2 h-2 rounded-full bg-orange-400"></div>
+                        <span className="text-xs text-slate-500 font-medium">Cajones</span>
+                      </div>
+                      <div className="text-lg md:text-2xl font-bold text-orange-500">
+                        {formatCurrency(totalCajones)}
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-1">{cajones.length} cajón{cajones.length !== 1 ? 'es' : ''} comprado{cajones.length !== 1 ? 's' : ''}</div>
+                    </div>
+
+                    {/* Gasto insumos */}
+                    <div className="bg-white p-4 md:p-5 rounded-xl border border-slate-200 shadow-sm">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <div className="w-2 h-2 rounded-full bg-rose-500"></div>
+                        <span className="text-xs text-slate-500 font-medium">Insumos</span>
+                      </div>
+                      <div className="text-lg md:text-2xl font-bold text-rose-600">
+                        {formatCurrency(totalGastos)}
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-1">Bolsas, separadores…</div>
+                    </div>
+
+                    {/* Balance neto */}
+                    <div className={`p-4 md:p-5 rounded-xl border shadow-sm ${balancePositivo ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <div className={`w-2 h-2 rounded-full ${balancePositivo ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
+                        <span className="text-xs text-slate-500 font-medium">Balance Neto</span>
+                      </div>
+                      <div className={`text-lg md:text-2xl font-bold ${balancePositivo ? 'text-emerald-700' : 'text-rose-700'}`}>
+                        {balanceNeto >= 0 ? '+' : ''}{formatCurrency(balanceNeto)}
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-1">Ventas − cajones − insumos</div>
+                    </div>
+                  </div>
+
+                  {/* ── Reporte de Seguimiento ── */}
+                  <ReporteSeguimiento
+                    cajones={cajones}
+                    pedidos={pedidos}
+                    gastos={gastos}
+                    formatCurrency={formatCurrency}
+                  />
+                </>
+              );
+            })()}
 
             {/* Alerta de pedidos pendientes */}
             {pedidosPendientesCount > 0 && (
@@ -468,41 +687,52 @@ export default function App() {
               </div>
             )}
 
-            {/* Historial de actividad reciente */}
+            {/* Últimos movimientos reales */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
-                Últimos Movimientos
+                Actividad Reciente
               </h3>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <span className="p-1 rounded-full bg-emerald-100 text-emerald-700">
-                      <ArrowDownLeft size={14} />
-                    </span>
-                    <div>
-                      <p className="font-semibold text-slate-800">Cajón procesado</p>
-                      <p className="text-[10px] text-slate-400">Ingreso por producción</p>
+              <div className="space-y-2.5">
+                {[
+                  ...cajones.slice(0, 3).map(c => ({
+                    tipo: 'cajon' as const,
+                    label: `Cajón comprado${c.proveedor ? ` — ${c.proveedor}` : ''}`,
+                    sub: `Costo: ${formatCurrency(c.costoTotal)}`,
+                    fecha: String(c.fecha),
+                    id: c.id,
+                  })),
+                  ...pedidos.filter(p => p.estado === 'ENTREGADO').slice(0, 3).map(p => ({
+                    tipo: 'entrega' as const,
+                    label: `Entrega a ${p.clienteNombre}`,
+                    sub: `${p.cantidadHamburguesas} hamburguesas · ${formatCurrency(p.precioTotal)}`,
+                    fecha: String(p.fechaPedido),
+                    id: p.id,
+                  })),
+                ]
+                  .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+                  .slice(0, 5)
+                  .map(item => (
+                    <div key={item.id} className="flex items-center justify-between text-xs border-b border-slate-50 pb-2 last:border-0 last:pb-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`p-1 rounded-full ${item.tipo === 'cajon' ? 'bg-orange-100 text-orange-600' : 'bg-emerald-100 text-emerald-700'}`}>
+                          {item.tipo === 'cajon' ? <ArrowDownLeft size={13} /> : <ArrowUpRight size={13} />}
+                        </span>
+                        <div>
+                          <p className="font-semibold text-slate-800">{item.label}</p>
+                          <p className="text-[10px] text-slate-400">{item.sub}</p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] text-slate-400">{formatDate(item.fecha)}</span>
                     </div>
-                  </div>
-                  <span className="font-bold text-emerald-600">+240 u.</span>
-                </div>
-
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="p-1 rounded-full bg-blue-100 text-blue-700">
-                      <ArrowUpRight size={14} />
-                    </span>
-                    <div>
-                      <p className="font-semibold text-slate-800">Entrega El Puente</p>
-                      <p className="text-[10px] text-slate-400">Egreso por pedido</p>
-                    </div>
-                  </div>
-                  <span className="font-bold text-blue-600">-100 u.</span>
-                </div>
+                  ))}
+                {cajones.length === 0 && pedidos.length === 0 && (
+                  <p className="text-xs text-slate-400 text-center py-2">Sin actividad registrada aún</p>
+                )}
               </div>
             </div>
           </div>
         )}
+
 
         {/* ========================================================= */}
         {/* TAB: PRODUCCIÓN (CAJONES DE PECHUGAS) */}
@@ -581,10 +811,10 @@ export default function App() {
                       <div>
                         <p className="text-xs font-bold text-slate-700">{formatCurrency(c.costoTotal)}</p>
                         <p className="text-[11px] text-slate-500">
-                          {c.proveedor || 'Sin proveedor'} • {c.fechaCompra}
+                          {c.proveedor || 'Sin proveedor'} • {formatDate(String(c.fecha))}
                         </p>
                       </div>
-                      {c.unidadesRendidas !== null ? (
+                      {c.unidadesRendidas != null ? (
                         <div className="text-right">
                           <p className="text-xs font-bold text-emerald-700">{c.unidadesRendidas} hamburguesas</p>
                           <button
@@ -625,7 +855,7 @@ export default function App() {
                           ✕
                         </button>
                       </div>
-                    ) : c.unidadesRendidas === null && (
+                    ) : c.unidadesRendidas == null && (
                       <button
                         onClick={() => { setEditandoUnidades(c.id); setUnidadesEdit(''); }}
                         className="w-full border border-dashed border-amber-400 text-amber-600 text-xs font-semibold py-2 rounded-lg flex items-center justify-center gap-1.5 hover:bg-amber-50 transition"
