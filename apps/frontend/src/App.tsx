@@ -38,11 +38,11 @@ interface DemoCajon {
 interface DemoPedido {
   id: string;
   clienteNombre: string;
-  clienteTelefono?: string;
   cantidadHamburguesas: number;
   precioTotal: number;
   estado: EstadoPedido;
   fechaPedido: string;
+  fechaEntrega?: string;
 }
 
 interface DemoGasto {
@@ -80,16 +80,15 @@ export default function App() {
     {
       id: 'p1',
       clienteNombre: 'Mariana Gomez',
-      clienteTelefono: '11-4567-8901',
       cantidadHamburguesas: 30,
       precioTotal: 25500,
       estado: 'PENDIENTE',
       fechaPedido: new Date().toISOString(),
+      fechaEntrega: new Date(Date.now() + 86400000 * 2).toISOString().slice(0, 10),
     },
     {
       id: 'p2',
       clienteNombre: 'Hamburguesería El Puente',
-      clienteTelefono: '11-9876-5432',
       cantidadHamburguesas: 100,
       precioTotal: 80000,
       estado: 'ENTREGADO',
@@ -155,6 +154,7 @@ export default function App() {
   const [nuevoPedidoCliente, setNuevoPedidoCliente] = useState<string>('');
   const [nuevoPedidoCantidad, setNuevoPedidoCantidad] = useState<string>('');
   const [nuevoPedidoPrecio, setNuevoPedidoPrecio] = useState<string>('');
+  const [nuevoPedidoFechaEntrega, setNuevoPedidoFechaEntrega] = useState<string>('');
 
   const [nuevoGastoConcepto, setNuevoGastoConcepto] = useState<string>('');
   const [nuevoGastoMonto, setNuevoGastoMonto] = useState<string>('');
@@ -217,12 +217,14 @@ export default function App() {
       precioTotal: precio,
       estado: 'PENDIENTE',
       fechaPedido: new Date().toISOString(),
+      fechaEntrega: nuevoPedidoFechaEntrega || undefined,
     };
 
     setPedidos([nuevo, ...pedidos]);
     setNuevoPedidoCliente('');
     setNuevoPedidoCantidad('');
     setNuevoPedidoPrecio('');
+    setNuevoPedidoFechaEntrega('');
     showAlert('Pedido Registrado', `El pedido para ${nuevo.clienteNombre} quedó en estado Pendiente.`, 'success');
   };
 
@@ -694,6 +696,18 @@ export default function App() {
                   </div>
                 </div>
 
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Fecha de Entrega <span className="text-slate-400 font-normal">(opcional)</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={nuevoPedidoFechaEntrega}
+                    onChange={(e) => setNuevoPedidoFechaEntrega(e.target.value)}
+                    className="w-full text-sm px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
                 <button
                   type="submit"
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg shadow active:scale-[0.98] transition flex items-center justify-center gap-2"
@@ -725,6 +739,11 @@ export default function App() {
                           <p className="text-xs text-slate-500 font-medium">
                             {p.cantidadHamburguesas} hamburguesas • {formatCurrency(p.precioTotal)}
                           </p>
+                          {p.fechaEntrega && (
+                            <p className="text-[10px] text-emerald-700 font-semibold mt-0.5 flex items-center gap-1">
+                              📅 Entrega: {new Date(p.fechaEntrega).toLocaleDateString('es-AR')}
+                            </p>
+                          )}
                         </div>
                         <span
                           className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
