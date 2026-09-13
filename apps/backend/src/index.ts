@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { Prisma } from '@prisma/client';
 import { prisma } from './db.js';
 import {
   CreateCajonDto,
@@ -25,7 +26,7 @@ app.use(cors());
 app.use(express.json());
 
 // Helper: asegura que StockPorTipo tenga una fila por cada tipo
-async function ensureStockPorTipo(tx: typeof prisma) {
+async function ensureStockPorTipo(tx: Prisma.TransactionClient) {
   for (const tipo of TIPOS_HAMBURGUESA) {
     await tx.stockPorTipo.upsert({
       where: { tipo },
