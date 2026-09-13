@@ -38,7 +38,10 @@ export function useModal() {
       type: 'warning',
       confirmText: 'Confirmar',
       cancelText: 'Cancelar',
-      onConfirm,
+      onConfirm: () => {
+        closeModal();
+        onConfirm();
+      },
       onCancel: closeModal,
     });
   };

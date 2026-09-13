@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Layers, Plus, Edit3 } from 'lucide-react';
+import { Layers, Plus, Edit3, Trash2 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@todopolloyplus/shared';
-import { crearCajon, actualizarUnidadesCajon } from '../api/client';
+import { crearCajon, actualizarUnidadesCajon, eliminarCajon } from '../api/client';
 import type { AppDataContextType } from '../components/layout/Layout';
 
 export function Produccion() {
-  const { cajones, fetchAll, showAlert } = useOutletContext<AppDataContextType>();
+  const { cajones, fetchAll, showAlert, showConfirm } = useOutletContext<AppDataContextType>();
 
   const [nuevoCajonCosto, setNuevoCajonCosto] = useState('');
   const [nuevoCajonFecha, setNuevoCajonFecha] = useState(new Date().toISOString().slice(0, 10));
@@ -44,6 +44,24 @@ export function Produccion() {
     } catch (err: unknown) {
       showAlert('Error', err instanceof Error ? err.message : 'No se pudo actualizar el cajón.', 'error');
     }
+  };
+
+  const handleEliminarCajon = (id: string) => {
+    const c = cajones.find((x) => x.id === id);
+    if (!c) return;
+    showConfirm(
+      '¿Eliminar Cajón?',
+      `Vas a eliminar el cajón de ${formatCurrency(c.costoTotal)}${c.proveedor ? ` (${c.proveedor})` : ''}. Esta acción no se puede deshacer.`,
+      async () => {
+        try {
+          await eliminarCajon(id);
+          await fetchAll();
+          showAlert('Cajón Eliminado', 'El cajón fue eliminado correctamente.', 'success');
+        } catch (err: unknown) {
+          showAlert('Error', err instanceof Error ? err.message : 'No se pudo eliminar el cajón.', 'error');
+        }
+      }
+    );
   };
 
   return (
@@ -123,21 +141,30 @@ export function Produccion() {
                     {c.proveedor || 'Sin proveedor'} • {formatDate(String(c.fecha))}
                   </p>
                 </div>
-                {c.unidadesRendidas != null ? (
-                  <div className="text-right">
-                    <p className="text-xs font-bold text-emerald-700">{c.unidadesRendidas} hamburguesas</p>
-                    <button
-                      onClick={() => { setEditandoUnidades(c.id); setUnidadesEdit(String(c.unidadesRendidas)); }}
-                      className="text-[10px] text-slate-400 hover:text-amber-600 flex items-center gap-0.5 ml-auto transition"
-                    >
-                      <Edit3 size={10} /> editar
-                    </button>
-                  </div>
-                ) : (
-                  <span className="text-[10px] bg-amber-100 text-amber-700 font-semibold px-2 py-0.5 rounded-full">
-                    Sin rendimiento
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {c.unidadesRendidas != null ? (
+                    <div className="text-right">
+                      <p className="text-xs font-bold text-emerald-700">{c.unidadesRendidas} hamburguesas</p>
+                      <button
+                        onClick={() => { setEditandoUnidades(c.id); setUnidadesEdit(String(c.unidadesRendidas)); }}
+                        className="text-[10px] text-slate-400 hover:text-amber-600 flex items-center gap-0.5 ml-auto transition"
+                      >
+                        <Edit3 size={10} /> editar
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] bg-amber-100 text-amber-700 font-semibold px-2 py-0.5 rounded-full">
+                      Sin rendimiento
+                    </span>
+                  )}
+                  <button
+                    onClick={() => handleEliminarCajon(c.id)}
+                    className="text-slate-300 hover:text-rose-500 p-1 rounded-lg hover:bg-rose-50 transition"
+                    title="Eliminar cajón"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
 
               {/* Edición inline de hamburguesas rendidas */}

@@ -250,7 +250,23 @@ app.patch('/api/cajones/:id/unidades', async (req: Request, res: Response) => {
   }
 });
 
+app.delete('/api/cajones/:id', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
 
+    const cajon = await prisma.cajon.findUnique({ where: { id } });
+    if (!cajon) {
+      return res.status(404).json({ success: false, error: 'Cajón no encontrado' });
+    }
+
+    await prisma.cajon.delete({ where: { id } });
+
+    res.json({ success: true, data: null });
+  } catch (error) {
+    console.error('Error deleting cajon:', error);
+    res.status(500).json({ success: false, error: 'Error al eliminar el cajón' });
+  }
+});
 app.get('/api/pedidos', async (_req: Request, res: Response) => {
   try {
     const pedidos = await prisma.pedido.findMany({
@@ -339,6 +355,24 @@ app.patch('/api/pedidos/:id/estado', async (req: Request, res: Response) => {
   }
 });
 
+app.delete('/api/pedidos/:id', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+
+    const pedido = await prisma.pedido.findUnique({ where: { id } });
+    if (!pedido) {
+      return res.status(404).json({ success: false, error: 'Pedido no encontrado' });
+    }
+
+    await prisma.pedido.delete({ where: { id } });
+
+    res.json({ success: true, data: null });
+  } catch (error) {
+    console.error('Error deleting pedido:', error);
+    res.status(500).json({ success: false, error: 'Error al eliminar el pedido' });
+  }
+});
+
 // ============================================================
 // GASTOS (COSTOS EXTRA)
 // ============================================================
@@ -371,6 +405,50 @@ app.post('/api/gastos', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error creating gasto:', error);
     res.status(500).json({ success: false, error: 'Error al registrar el gasto' });
+  }
+});
+
+app.patch('/api/gastos/:id', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const { concepto, monto, categoria } = req.body as { concepto?: string; monto?: number; categoria?: string };
+
+    const gasto = await prisma.gasto.findUnique({ where: { id } });
+    if (!gasto) {
+      return res.status(404).json({ success: false, error: 'Gasto no encontrado' });
+    }
+
+    const gastoActualizado = await prisma.gasto.update({
+      where: { id },
+      data: {
+        ...(concepto !== undefined && { concepto }),
+        ...(monto !== undefined && { monto }),
+        ...(categoria !== undefined && { categoria: categoria as any }),
+      },
+    });
+
+    res.json({ success: true, data: gastoActualizado });
+  } catch (error) {
+    console.error('Error updating gasto:', error);
+    res.status(500).json({ success: false, error: 'Error al actualizar el gasto' });
+  }
+});
+
+app.delete('/api/gastos/:id', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+
+    const gasto = await prisma.gasto.findUnique({ where: { id } });
+    if (!gasto) {
+      return res.status(404).json({ success: false, error: 'Gasto no encontrado' });
+    }
+
+    await prisma.gasto.delete({ where: { id } });
+
+    res.json({ success: true, data: null });
+  } catch (error) {
+    console.error('Error deleting gasto:', error);
+    res.status(500).json({ success: false, error: 'Error al eliminar el gasto' });
   }
 });
 

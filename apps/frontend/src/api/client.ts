@@ -44,6 +44,10 @@ export async function actualizarUnidadesCajon(
   });
 }
 
+export async function eliminarCajon(id: string): Promise<void> {
+  await apiFetch<null>(`${API_BASE}/cajones/${id}`, { method: 'DELETE' });
+}
+
 // ── Pedidos ──────────────────────────────────────────────────────
 export async function fetchPedidos(): Promise<Pedido[]> {
   return apiFetch<Pedido[]>(`${API_BASE}/pedidos`);
@@ -73,6 +77,10 @@ export async function actualizarEstadoPedido(
   });
 }
 
+export async function eliminarPedido(id: string): Promise<void> {
+  await apiFetch<null>(`${API_BASE}/pedidos/${id}`, { method: 'DELETE' });
+}
+
 // ── Gastos ───────────────────────────────────────────────────────
 export async function fetchGastos(): Promise<Gasto[]> {
   return apiFetch<Gasto[]>(`${API_BASE}/gastos`);
@@ -88,4 +96,19 @@ export async function crearGasto(payload: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+}
+
+export async function actualizarGasto(
+  id: string,
+  payload: { concepto?: string; monto?: number; categoria?: CategoriaGasto }
+): Promise<Gasto> {
+  return apiFetch<Gasto>(`${API_BASE}/gastos/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function eliminarGasto(id: string): Promise<void> {
+  await apiFetch<null>(`${API_BASE}/gastos/${id}`, { method: 'DELETE' });
 }

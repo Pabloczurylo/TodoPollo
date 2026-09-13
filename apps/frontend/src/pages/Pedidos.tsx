@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { ShoppingBag, Plus, CheckCircle2, Trash2 } from 'lucide-react';
 import { formatCurrency, getEstadoPedidoLabel } from '@todopolloyplus/shared';
-import { crearPedido, actualizarEstadoPedido } from '../api/client';
+import { crearPedido, actualizarEstadoPedido, eliminarPedido } from '../api/client';
 import type { AppDataContextType } from '../components/layout/Layout';
 
 export function Pedidos() {
@@ -61,14 +61,15 @@ export function Pedidos() {
     const pedido = pedidos.find((p) => p.id === id);
     if (!pedido) return;
     showConfirm(
-      '¿Cancelar Pedido?',
-      `Vas a cancelar el pedido de ${pedido.clienteNombre}. Esta acción no se puede deshacer.`,
+      '¿Eliminar Pedido?',
+      `Vas a eliminar el pedido de ${pedido.clienteNombre}. Esta acción no se puede deshacer.`,
       async () => {
         try {
-          await actualizarEstadoPedido(id, 'CANCELADO');
+          await eliminarPedido(id);
           await fetchAll();
+          showAlert('Pedido Eliminado', 'El pedido fue eliminado correctamente.', 'success');
         } catch (err: unknown) {
-          showAlert('Error', err instanceof Error ? err.message : 'No se pudo cancelar el pedido.', 'error');
+          showAlert('Error', err instanceof Error ? err.message : 'No se pudo eliminar el pedido.', 'error');
         }
       }
     );
