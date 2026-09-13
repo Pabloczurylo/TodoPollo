@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Cajon, Pedido, Gasto } from '@todopolloyplus/shared';
+import type { Cajon, Pedido, Gasto, StockPorTipo } from '@todopolloyplus/shared';
 import {
   fetchStock,
   fetchCajones,
@@ -9,6 +9,7 @@ import {
 
 export function useAppData() {
   const [stockActual, setStockActual] = useState(0);
+  const [stockPorTipo, setStockPorTipo] = useState<StockPorTipo[]>([]);
   const [cajones, setCajones] = useState<Cajon[]>([]);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [gastos, setGastos] = useState<Gasto[]>([]);
@@ -26,6 +27,7 @@ export function useAppData() {
         fetchGastos(),
       ]);
       setStockActual(stockData.cantidadActual);
+      setStockPorTipo(stockData.stockPorTipo ?? []);
       setCajones(cajonesData);
       setPedidos(pedidosData);
       setGastos(gastosData);
@@ -54,6 +56,7 @@ export function useAppData() {
   return {
     // Raw state
     stockActual,
+    stockPorTipo,
     cajones,
     pedidos,
     gastos,

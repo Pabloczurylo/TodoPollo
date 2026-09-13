@@ -1,6 +1,25 @@
 // ==========================================
+// 0. TIPOS DE HAMBURGUESA
+// ==========================================
+
+export type TipoHamburguesa = 'JAMON_QUESO' | 'ESPINACA_QUESO' | 'ZANAHORIA_QUESO';
+
+export const TIPOS_HAMBURGUESA: TipoHamburguesa[] = [
+  'JAMON_QUESO',
+  'ESPINACA_QUESO',
+  'ZANAHORIA_QUESO',
+];
+
+// ==========================================
 // 1. PRODUCCIÓN (CAJÓN DE PECHUGAS)
 // ==========================================
+
+export interface CajonRendimientoPorTipo {
+  id: string;
+  cajonId: string;
+  tipo: TipoHamburguesa;
+  cantidad: number;
+}
 
 export interface Cajon {
   id: string;
@@ -11,14 +30,18 @@ export interface Cajon {
   notas?: string | null;
   createdAt: string | Date;
   updatedAt: string | Date;
+  rendimientoPorTipo?: CajonRendimientoPorTipo[];
 }
 
 export interface CreateCajonDto {
   costoTotal: number;
-  unidadesRendidas?: number;
   proveedor?: string;
   notas?: string;
   fecha?: string | Date;
+}
+
+export interface RegistrarRendimientoDto {
+  distribucion: Record<TipoHamburguesa, number>;
 }
 
 // ==========================================
@@ -29,6 +52,13 @@ export type TipoMovimientoStock = 'INGRESO_PRODUCCION' | 'EGRESO_PEDIDO' | 'AJUS
 
 export interface Stock {
   id: string;
+  cantidadActual: number;
+  updatedAt: string | Date;
+}
+
+export interface StockPorTipo {
+  id: string;
+  tipo: TipoHamburguesa;
   cantidadActual: number;
   updatedAt: string | Date;
 }
@@ -56,6 +86,13 @@ export interface AjusteStockDto {
 
 export type EstadoPedido = 'PENDIENTE' | 'EN_PREPARACION' | 'ENTREGADO' | 'CANCELADO';
 
+export interface ItemPedido {
+  id: string;
+  pedidoId: string;
+  tipo: TipoHamburguesa;
+  cantidad: number;
+}
+
 export interface Pedido {
   id: string;
   clienteNombre: string;
@@ -67,11 +104,17 @@ export interface Pedido {
   notas?: string | null;
   createdAt: string | Date;
   updatedAt: string | Date;
+  items?: ItemPedido[];
+}
+
+export interface CreateItemPedidoDto {
+  tipo: TipoHamburguesa;
+  cantidad: number;
 }
 
 export interface CreatePedidoDto {
   clienteNombre: string;
-  cantidadHamburguesas: number;
+  items: CreateItemPedidoDto[];
   precioTotal: number;
   estado?: EstadoPedido;
   fechaEntrega?: string | Date;

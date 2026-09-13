@@ -10,12 +10,13 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
 } from 'lucide-react';
-import { formatCurrency, formatDate } from '@todopolloyplus/shared';
+import { formatCurrency, formatDate, getTipoHamburguesaLabel, getTipoHamburguesaEmoji } from '@todopolloyplus/shared';
+import type { TipoHamburguesa } from '@todopolloyplus/shared';
 import { ReporteSeguimiento } from '../components/dashboard/ReporteSeguimiento';
 import type { AppDataContextType } from '../components/layout/Layout';
 
 export function Dashboard() {
-  const { cajones, pedidos, gastos, totalVentas, totalGastos, pedidosPendientesCount, stockActual } =
+  const { cajones, pedidos, gastos, totalVentas, totalGastos, pedidosPendientesCount, stockActual, stockPorTipo } =
     useOutletContext<AppDataContextType>();
 
   const navigate = useNavigate();
@@ -42,6 +43,20 @@ export function Dashboard() {
         <p className="text-xs text-amber-100/90 mt-2 flex items-center gap-1">
           <TrendingUp size={14} /> Listo para despachar y tomar nuevos pedidos
         </p>
+        {/* Breakdown por tipo */}
+        {stockPorTipo.length > 0 && (
+          <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-amber-400/40">
+            {stockPorTipo.map((s) => (
+              <div key={s.tipo} className="bg-white/15 rounded-xl px-2 py-2 text-center">
+                <p className="text-xl leading-none">{getTipoHamburguesaEmoji(s.tipo as TipoHamburguesa)}</p>
+                <p className="text-xl font-extrabold mt-1">{s.cantidadActual}</p>
+                <p className="text-[9px] text-amber-100 leading-tight mt-0.5">
+                  {getTipoHamburguesaLabel(s.tipo as TipoHamburguesa)}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Accesos Rápidos Mobile */}

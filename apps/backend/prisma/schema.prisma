@@ -9,6 +9,15 @@ generator client {
 }
 
 // -------------------------------------------------------------
+// ENUM: Tipos de Hamburguesa
+// -------------------------------------------------------------
+enum TipoHamburguesa {
+  JAMON_QUESO
+  ESPINACA_QUESO
+  ZANAHORIA_QUESO
+}
+
+// -------------------------------------------------------------
 // 1. PRODUCCIÓN: Registro de Cajones de pechugas
 // -------------------------------------------------------------
 model Cajon {
@@ -24,7 +33,22 @@ model Cajon {
   // Relación con los movimientos de stock que generó este cajón
   movimientos      MovimientoStock[]
 
+  // Distribución de unidades por tipo de hamburguesa
+  rendimientoPorTipo CajonRendimientoPorTipo[]
+
   @@map("cajones")
+}
+
+/// Distribución de hamburguesas rendidas por tipo para cada cajón
+model CajonRendimientoPorTipo {
+  id       String          @id @default(uuid())
+  cajonId  String          @map("cajon_id")
+  cajon    Cajon           @relation(fields: [cajonId], references: [id], onDelete: Cascade)
+  tipo     TipoHamburguesa
+  cantidad Int             @default(0)
+
+  @@unique([cajonId, tipo])
+  @@map("cajon_rendimiento_por_tipo")
 }
 
 // -------------------------------------------------------------
@@ -36,6 +60,16 @@ model Stock {
   updatedAt      DateTime @updatedAt @map("updated_at")
 
   @@map("stock")
+}
+
+/// Stock desglosado por tipo de hamburguesa (una fila por tipo)
+model StockPorTipo {
+  id             String          @id @default(uuid())
+  tipo           TipoHamburguesa @unique
+  cantidadActual Int             @default(0) @map("cantidad_actual")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  @@map("stock_por_tipo")
 }
 
 enum TipoMovimientoStock {
@@ -76,7 +110,7 @@ enum EstadoPedido {
 model Pedido {
   id                   String            @id @default(uuid())
   clienteNombre        String            @map("cliente_nombre")
-  cantidadHamburguesas Int               @map("cantidad_hamburguesas")
+  cantidadHamburguesas Int               @map("cantidad_hamburguesas") // Suma total de items
   precioTotal          Float             @map("precio_total")
   estado               EstadoPedido      @default(PENDIENTE)
   fechaPedido          DateTime          @default(now()) @map("fecha_pedido")
@@ -86,8 +120,21 @@ model Pedido {
   updatedAt            DateTime          @updatedAt @map("updated_at")
 
   movimientos          MovimientoStock[]
+  items                ItemPedido[]
 
   @@map("pedidos")
+}
+
+/// Ítems de un pedido: cuántas hamburguesas de cada tipo
+model ItemPedido {
+  id       String          @id @default(uuid())
+  pedidoId String          @map("pedido_id")
+  pedido   Pedido          @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  tipo     TipoHamburguesa
+  cantidad Int
+
+  @@unique([pedidoId, tipo])
+  @@map("items_pedido")
 }
 
 // -------------------------------------------------------------

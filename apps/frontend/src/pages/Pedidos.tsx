@@ -1,34 +1,62 @@
 import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { ShoppingBag, Plus, CheckCircle2, Trash2 } from 'lucide-react';
-import { formatCurrency, getEstadoPedidoLabel } from '@todopolloyplus/shared';
+import {
+  formatCurrency,
+  getEstadoPedidoLabel,
+  getTipoHamburguesaLabel,
+  getTipoHamburguesaEmoji,
+  TIPOS_HAMBURGUESA,
+} from '@todopolloyplus/shared';
+import type { TipoHamburguesa } from '@todopolloyplus/shared';
 import { crearPedido, actualizarEstadoPedido, eliminarPedido } from '../api/client';
 import type { AppDataContextType } from '../components/layout/Layout';
 
+type CantidadesPorTipo = Record<TipoHamburguesa, string>;
+
+const cantidadesVacias = (): CantidadesPorTipo => ({
+  JAMON_QUESO: '',
+  ESPINACA_QUESO: '',
+  ZANAHORIA_QUESO: '',
+});
+
 export function Pedidos() {
-  const { pedidos, stockActual, fetchAll, showAlert, showConfirm } =
+  const { pedidos, stockPorTipo, stockActual, fetchAll, showAlert, showConfirm } =
     useOutletContext<AppDataContextType>();
 
   const [cliente, setCliente] = useState('');
-  const [cantidad, setCantidad] = useState('');
+  const [cantidades, setCantidades] = useState<CantidadesPorTipo>(cantidadesVacias());
   const [precio, setPrecio] = useState('');
   const [fechaEntrega, setFechaEntrega] = useState('');
 
+  const totalCantidad = TIPOS_HAMBURGUESA.reduce(
+    (s, t) => s + (parseInt(cantidades[t]) || 0),
+    0
+  );
+
   const handleCrearPedido = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cantidadNum = parseInt(cantidad);
     const precioNum = parseFloat(precio);
-    if (!cliente || !cantidadNum || !precioNum) return;
+    if (!cliente || totalCantidad <= 0 || !precioNum) {
+      showAlert('Datos incompletos', 'Completá el cliente, al menos un tipo de hamburguesa y el precio.', 'error');
+      return;
+    }
+
+    const items = TIPOS_HAMBURGUESA.filter((t) => (parseInt(cantidades[t]) || 0) > 0).map((t) => ({
+      tipo: t,
+      cantidad: parseInt(cantidades[t]),
+    }));
+
     try {
       await crearPedido({
         clienteNombre: cliente,
-        cantidadHamburguesas: cantidadNum,
+        items,
         precioTotal: precioNum,
         fechaEntrega: fechaEntrega || undefined,
       });
       await fetchAll();
       setCliente('');
-      setCantidad('');
+      setCantidades(cantidadesVacias());
       setPrecio('');
       setFechaEntrega('');
       showAlert('Pedido Registrado', `Pedido para ${cliente} en estado Pendiente.`, 'success');
@@ -41,6 +69,24 @@ export function Pedidos() {
     const pedido = pedidos.find((p) => p.id === id);
     if (!pedido || pedido.estado === 'ENTREGADO') return;
 
+    // Verificar stock por tipo
+    const stockMap: Record<string, number> = {};
+    for (const s of stockPorTipo) {
+      stockMap[s.tipo] = s.cantidadActual;
+    }
+
+    const items = pedido.items ?? [];
+    const problemaTipo = items.find((item) => (stockMap[item.tipo] ?? 0) < item.cantidad);
+
+    if (problemaTipo) {
+      showAlert(
+        'Stock Insuficiente',
+        `No hay suficiente stock de ${getTipoHamburguesaLabel(problemaTipo.tipo)}. Hay ${stockMap[problemaTipo.tipo] ?? 0} y el pedido requiere ${problemaTipo.cantidad}.`,
+        'warning'
+      );
+      return;
+    }
+
     if (stockActual < pedido.cantidadHamburguesas) {
       showAlert(
         'Stock Insuficiente',
@@ -49,6 +95,7 @@ export function Pedidos() {
       );
       return;
     }
+
     try {
       await actualizarEstadoPedido(id, 'ENTREGADO');
       await fetchAll();
@@ -99,31 +146,52 @@ export function Pedidos() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Cantidad</label>
-              <input
-                type="number"
-                value={cantidad}
-                onChange={(e) => setCantidad(e.target.value)}
-                placeholder="Ej: 50"
-                className="w-full text-sm px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                required
-              />
+          {/* Cantidades por tipo */}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-2">
+              Hamburguesas por tipo
+            </label>
+            <div className="space-y-2">
+              {TIPOS_HAMBURGUESA.map((tipo) => {
+                const stockTipo = stockPorTipo.find((s) => s.tipo === tipo)?.cantidadActual ?? 0;
+                return (
+                  <div key={tipo} className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2">
+                    <span className="text-xl w-7 text-center">{getTipoHamburguesaEmoji(tipo)}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-slate-700 truncate">{getTipoHamburguesaLabel(tipo)}</p>
+                      <p className="text-[10px] text-slate-400">Stock: {stockTipo}</p>
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      value={cantidades[tipo]}
+                      onChange={(e) => setCantidades((prev) => ({ ...prev, [tipo]: e.target.value }))}
+                      placeholder="0"
+                      className="w-20 text-sm font-semibold text-center px-2 py-1.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                );
+              })}
             </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">
-                Precio Total ($)
-              </label>
-              <input
-                type="number"
-                value={precio}
-                onChange={(e) => setPrecio(e.target.value)}
-                placeholder="Ej: 42500"
-                className="w-full text-sm px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                required
-              />
-            </div>
+            {totalCantidad > 0 && (
+              <p className="text-xs font-bold text-emerald-700 text-right mt-1.5">
+                Total: {totalCantidad} hamburguesas
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">
+              Precio Total ($)
+            </label>
+            <input
+              type="number"
+              value={precio}
+              onChange={(e) => setPrecio(e.target.value)}
+              placeholder="Ej: 42500"
+              className="w-full text-sm px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              required
+            />
           </div>
 
           <div>
@@ -140,10 +208,11 @@ export function Pedidos() {
 
           <button
             type="submit"
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg shadow active:scale-[0.98] transition flex items-center justify-center gap-2"
+            disabled={totalCantidad === 0}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg shadow active:scale-[0.98] transition flex items-center justify-center gap-2"
           >
             <Plus size={18} />
-            <span>Guardar Pedido</span>
+            <span>Guardar Pedido{totalCantidad > 0 ? ` (${totalCantidad} unid.)` : ''}</span>
           </button>
         </form>
       </div>
@@ -156,6 +225,7 @@ export function Pedidos() {
         <div className="space-y-2">
           {pedidos.map((p) => {
             const isEntregado = p.estado === 'ENTREGADO';
+            const items = p.items ?? [];
             return (
               <div
                 key={p.id}
@@ -185,6 +255,20 @@ export function Pedidos() {
                     {getEstadoPedidoLabel(p.estado)}
                   </span>
                 </div>
+
+                {/* Detalle por tipo */}
+                {items.length > 0 && (
+                  <div className="flex gap-1.5 flex-wrap">
+                    {items.map((item) => (
+                      <span
+                        key={item.tipo}
+                        className="inline-flex items-center gap-1 text-[10px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full"
+                      >
+                        {getTipoHamburguesaEmoji(item.tipo)} {item.cantidad} {getTipoHamburguesaLabel(item.tipo)}
+                      </span>
+                    ))}
+                  </div>
+                )}
 
                 {/* Botones de acción */}
                 <div className="flex gap-2 mt-2">

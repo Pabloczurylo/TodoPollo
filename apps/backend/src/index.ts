@@ -9,7 +9,12 @@ import {
   ApiResponse,
   DashboardStats,
   EstadoPedido,
+  TipoHamburguesa,
+  RegistrarRendimientoDto,
 } from '@todopolloyplus/shared';
+
+// Constante local para iterar sobre los tipos (evita problemas de resolución ESM)
+const TIPOS_HAMBURGUESA: TipoHamburguesa[] = ['JAMON_QUESO', 'ESPINACA_QUESO', 'ZANAHORIA_QUESO'];
 
 dotenv.config();
 
@@ -18,6 +23,17 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json());
+
+// Helper: asegura que StockPorTipo tenga una fila por cada tipo
+async function ensureStockPorTipo(tx: typeof prisma) {
+  for (const tipo of TIPOS_HAMBURGUESA) {
+    await tx.stockPorTipo.upsert({
+      where: { tipo },
+      create: { tipo, cantidadActual: 0 },
+      update: {},
+    });
+  }
+}
 
 // ============================================================
 // HEALTH CHECK
@@ -107,6 +123,12 @@ app.get('/api/stock', async (_req: Request, res: Response) => {
       });
     }
 
+    // Stock desglosado por tipo
+    await ensureStockPorTipo(prisma);
+    const stockPorTipo = await prisma.stockPorTipo.findMany({
+      orderBy: { tipo: 'asc' },
+    });
+
     const ultimosMovimientos = await prisma.movimientoStock.findMany({
       take: 20,
       orderBy: { createdAt: 'desc' },
@@ -120,6 +142,7 @@ app.get('/api/stock', async (_req: Request, res: Response) => {
       success: true,
       data: {
         stock,
+        stockPorTipo,
         movimientos: ultimosMovimientos,
       },
     });
@@ -136,6 +159,7 @@ app.get('/api/cajones', async (_req: Request, res: Response) => {
   try {
     const cajones = await prisma.cajon.findMany({
       orderBy: { fecha: 'desc' },
+      include: { rendimientoPorTipo: true },
     });
     res.json({ success: true, data: cajones });
   } catch (error) {
@@ -148,79 +172,71 @@ app.post('/api/cajones', async (req: Request, res: Response) => {
   try {
     const data: CreateCajonDto = req.body;
 
-    const result = await prisma.$transaction(async (tx) => {
-      const nuevoCajon = await tx.cajon.create({
-        data: {
-          costoTotal: data.costoTotal,
-          unidadesRendidas: data.unidadesRendidas ?? null,
-          proveedor: data.proveedor ?? null,
-          notas: data.notas ?? null,
-          fecha: data.fecha ? new Date(data.fecha) : new Date(),
-        },
-      });
-
-      // Solo actualizar stock si se especificaron unidades rendidas
-      if (data.unidadesRendidas && data.unidadesRendidas > 0) {
-        let stock = await tx.stock.findFirst();
-        if (!stock) {
-          stock = await tx.stock.create({ data: { cantidadActual: 0 } });
-        }
-
-        const balancePosterior = stock.cantidadActual + data.unidadesRendidas;
-        await tx.stock.update({
-          where: { id: stock.id },
-          data: { cantidadActual: balancePosterior },
-        });
-
-        await tx.movimientoStock.create({
-          data: {
-            tipo: 'INGRESO_PRODUCCION',
-            cantidad: data.unidadesRendidas,
-            balancePosterior,
-            cajonId: nuevoCajon.id,
-            motivo: `Ingreso por producción de cajón (${data.unidadesRendidas} unid.)`,
-          },
-        });
-      }
-
-      return nuevoCajon;
+    const nuevoCajon = await prisma.cajon.create({
+      data: {
+        costoTotal: data.costoTotal,
+        proveedor: data.proveedor ?? null,
+        notas: data.notas ?? null,
+        fecha: data.fecha ? new Date(data.fecha as string) : new Date(),
+      },
+      include: { rendimientoPorTipo: true },
     });
 
-    res.status(201).json({ success: true, data: result });
+    res.status(201).json({ success: true, data: nuevoCajon });
   } catch (error) {
     console.error('Error creating cajon:', error);
     res.status(500).json({ success: false, error: 'Error al registrar el cajón' });
   }
 });
 
-app.patch('/api/cajones/:id/unidades', async (req: Request, res: Response) => {
+// Registrar/actualizar distribución de hamburguesas por tipo para un cajón
+app.patch('/api/cajones/:id/rendimiento', async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
-    const { unidadesRendidas } = req.body as { unidadesRendidas: number };
+    const { distribucion } = req.body as RegistrarRendimientoDto;
 
-    if (!unidadesRendidas || unidadesRendidas <= 0) {
-      return res.status(400).json({ success: false, error: 'Unidades inválidas' });
-    }
-
-    const cajonPrevio = await prisma.cajon.findUnique({ where: { id } });
+    const cajonPrevio = await prisma.cajon.findUnique({
+      where: { id },
+      include: { rendimientoPorTipo: true },
+    });
     if (!cajonPrevio) {
       return res.status(404).json({ success: false, error: 'Cajón no encontrado' });
     }
 
+    // Calcular totales: nuevo total vs total previo
+    const nuevoTotal = Object.values(distribucion).reduce((s, n) => s + n, 0);
+    const totalPrevio = cajonPrevio.unidadesRendidas ?? 0;
+    const diff = nuevoTotal - totalPrevio;
+
+    // Distribución previa por tipo
+    const prevPorTipo: Record<string, number> = {};
+    for (const r of cajonPrevio.rendimientoPorTipo) {
+      prevPorTipo[r.tipo] = r.cantidad;
+    }
+
     const result = await prisma.$transaction(async (tx) => {
+      // Upsert rendimiento por tipo en el cajón
+      for (const tipo of TIPOS_HAMBURGUESA) {
+        const cantidad = distribucion[tipo] ?? 0;
+        await tx.cajonRendimientoPorTipo.upsert({
+          where: { cajonId_tipo: { cajonId: id, tipo } },
+          create: { cajonId: id, tipo, cantidad },
+          update: { cantidad },
+        });
+      }
+
+      // Actualizar unidades rendidas totales en el cajón
       const cajonActualizado = await tx.cajon.update({
         where: { id },
-        data: { unidadesRendidas },
+        data: { unidadesRendidas: nuevoTotal },
+        include: { rendimientoPorTipo: true },
       });
 
+      // Actualizar stock total
       let stock = await tx.stock.findFirst();
       if (!stock) {
         stock = await tx.stock.create({ data: { cantidadActual: 0 } });
       }
-
-      // Diferencia respecto a unidades previas (si ya tenía alguna)
-      const prevUnidades = cajonPrevio.unidadesRendidas ?? 0;
-      const diff = unidadesRendidas - prevUnidades;
 
       if (diff !== 0) {
         const balancePosterior = stock.cantidadActual + diff;
@@ -235,9 +251,26 @@ app.patch('/api/cajones/:id/unidades', async (req: Request, res: Response) => {
             cantidad: diff,
             balancePosterior,
             cajonId: id,
-            motivo: `Actualización de rendimiento cajón (${unidadesRendidas} unid.)`,
+            motivo: `Ingreso por producción: ${Object.entries(distribucion)
+              .filter(([, v]) => v > 0)
+              .map(([k, v]) => `${v} ${k.replace('_', '/')}`)
+              .join(', ')}`,
           },
         });
+      }
+
+      // Actualizar stock por tipo
+      await ensureStockPorTipo(tx);
+      for (const tipo of TIPOS_HAMBURGUESA) {
+        const nuevaCantidadTipo = distribucion[tipo] ?? 0;
+        const prevCantidadTipo = prevPorTipo[tipo] ?? 0;
+        const diffTipo = nuevaCantidadTipo - prevCantidadTipo;
+        if (diffTipo !== 0) {
+          await tx.stockPorTipo.update({
+            where: { tipo },
+            data: { cantidadActual: { increment: diffTipo } },
+          });
+        }
       }
 
       return cajonActualizado;
@@ -245,8 +278,8 @@ app.patch('/api/cajones/:id/unidades', async (req: Request, res: Response) => {
 
     res.json({ success: true, data: result });
   } catch (error) {
-    console.error('Error updating cajon unidades:', error);
-    res.status(500).json({ success: false, error: 'Error al actualizar el cajón' });
+    console.error('Error updating cajon rendimiento:', error);
+    res.status(500).json({ success: false, error: 'Error al actualizar el rendimiento del cajón' });
   }
 });
 
@@ -254,12 +287,36 @@ app.delete('/api/cajones/:id', async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
 
-    const cajon = await prisma.cajon.findUnique({ where: { id } });
+    const cajon = await prisma.cajon.findUnique({
+      where: { id },
+      include: { rendimientoPorTipo: true },
+    });
     if (!cajon) {
       return res.status(404).json({ success: false, error: 'Cajón no encontrado' });
     }
 
-    await prisma.cajon.delete({ where: { id } });
+    // Si tenía rendimiento, descontar del stock
+    if (cajon.unidadesRendidas && cajon.unidadesRendidas > 0) {
+      await prisma.$transaction(async (tx) => {
+        let stock = await tx.stock.findFirst();
+        if (stock) {
+          await tx.stock.update({
+            where: { id: stock.id },
+            data: { cantidadActual: { decrement: cajon.unidadesRendidas! } },
+          });
+        }
+        // Descontar por tipo
+        for (const r of cajon.rendimientoPorTipo) {
+          await tx.stockPorTipo.update({
+            where: { tipo: r.tipo },
+            data: { cantidadActual: { decrement: r.cantidad } },
+          });
+        }
+        await tx.cajon.delete({ where: { id } });
+      });
+    } else {
+      await prisma.cajon.delete({ where: { id } });
+    }
 
     res.json({ success: true, data: null });
   } catch (error) {
@@ -267,10 +324,15 @@ app.delete('/api/cajones/:id', async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: 'Error al eliminar el cajón' });
   }
 });
+
+// ============================================================
+// PEDIDOS
+// ============================================================
 app.get('/api/pedidos', async (_req: Request, res: Response) => {
   try {
     const pedidos = await prisma.pedido.findMany({
       orderBy: { createdAt: 'desc' },
+      include: { items: true },
     });
     res.json({ success: true, data: pedidos });
   } catch (error) {
@@ -283,15 +345,30 @@ app.post('/api/pedidos', async (req: Request, res: Response) => {
   try {
     const data: CreatePedidoDto = req.body;
 
+    // Validar que venga al menos un ítem con cantidad > 0
+    const itemsValidos = (data.items ?? []).filter((i) => i.cantidad > 0);
+    if (itemsValidos.length === 0) {
+      return res.status(400).json({ success: false, error: 'El pedido debe tener al menos un tipo de hamburguesa' });
+    }
+
+    const cantidadTotal = itemsValidos.reduce((s, i) => s + i.cantidad, 0);
+
     const nuevoPedido = await prisma.pedido.create({
       data: {
         clienteNombre: data.clienteNombre,
-        cantidadHamburguesas: data.cantidadHamburguesas,
+        cantidadHamburguesas: cantidadTotal,
         precioTotal: data.precioTotal,
         estado: data.estado ?? 'PENDIENTE',
-        fechaEntrega: data.fechaEntrega ? new Date(data.fechaEntrega) : null,
+        fechaEntrega: data.fechaEntrega ? new Date(data.fechaEntrega as string) : null,
         notas: data.notas ?? null,
+        items: {
+          create: itemsValidos.map((i) => ({
+            tipo: i.tipo,
+            cantidad: i.cantidad,
+          })),
+        },
       },
+      include: { items: true },
     });
 
     res.status(201).json({ success: true, data: nuevoPedido });
@@ -306,12 +383,14 @@ app.patch('/api/pedidos/:id/estado', async (req: Request, res: Response) => {
     const id = req.params.id as string;
     const { estado } = req.body as { estado: EstadoPedido };
 
-    const pedidoPrevio = await prisma.pedido.findUnique({ where: { id } });
+    const pedidoPrevio = await prisma.pedido.findUnique({
+      where: { id },
+      include: { items: true },
+    });
     if (!pedidoPrevio) {
       return res.status(404).json({ success: false, error: 'Pedido no encontrado' });
     }
 
-    // Transacción: si pasa a ENTREGADO, descuenta del stock
     const updated = await prisma.$transaction(async (tx) => {
       const pedidoActualizado = await tx.pedido.update({
         where: { id },
@@ -319,6 +398,7 @@ app.patch('/api/pedidos/:id/estado', async (req: Request, res: Response) => {
           estado,
           fechaEntrega: estado === 'ENTREGADO' ? new Date() : pedidoPrevio.fechaEntrega,
         },
+        include: { items: true },
       });
 
       // Si pasa a ENTREGADO y antes no lo estaba, restar de stock
@@ -343,6 +423,15 @@ app.patch('/api/pedidos/:id/estado', async (req: Request, res: Response) => {
             motivo: `Entrega de pedido a ${pedidoPrevio.clienteNombre}`,
           },
         });
+
+        // Descontar por tipo de hamburguesa
+        await ensureStockPorTipo(tx);
+        for (const item of pedidoPrevio.items) {
+          await tx.stockPorTipo.update({
+            where: { tipo: item.tipo },
+            data: { cantidadActual: { decrement: item.cantidad } },
+          });
+        }
       }
 
       return pedidoActualizado;
@@ -396,7 +485,7 @@ app.post('/api/gastos', async (req: Request, res: Response) => {
         concepto: data.concepto,
         monto: data.monto,
         categoria: (data.categoria as any) ?? 'OTROS',
-        fecha: data.fecha ? new Date(data.fecha) : new Date(),
+        fecha: data.fecha ? new Date(data.fecha as string) : new Date(),
         notas: data.notas ?? null,
       },
     });

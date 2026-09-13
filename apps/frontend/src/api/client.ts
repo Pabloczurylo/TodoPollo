@@ -1,4 +1,14 @@
-import type { Cajon, Pedido, Gasto, CategoriaGasto, EstadoPedido } from '@todopolloyplus/shared';
+import type {
+  Cajon,
+  Pedido,
+  Gasto,
+  CategoriaGasto,
+  EstadoPedido,
+  TipoHamburguesa,
+  StockPorTipo,
+  RegistrarRendimientoDto,
+  CreateItemPedidoDto,
+} from '@todopolloyplus/shared';
 
 export const API_BASE = 'http://localhost:3001/api';
 
@@ -11,9 +21,11 @@ async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 // ── Stock ────────────────────────────────────────────────────────
-export async function fetchStock(): Promise<{ cantidadActual: number }> {
-  const data = await apiFetch<{ stock: { cantidadActual: number } }>(`${API_BASE}/stock`);
-  return data.stock;
+export async function fetchStock(): Promise<{ cantidadActual: number; stockPorTipo: StockPorTipo[] }> {
+  const data = await apiFetch<{ stock: { cantidadActual: number }; stockPorTipo: StockPorTipo[] }>(
+    `${API_BASE}/stock`
+  );
+  return { cantidadActual: data.stock.cantidadActual, stockPorTipo: data.stockPorTipo };
 }
 
 // ── Cajones ──────────────────────────────────────────────────────
@@ -33,14 +45,15 @@ export async function crearCajon(payload: {
   });
 }
 
-export async function actualizarUnidadesCajon(
+export async function registrarRendimientoCajon(
   id: string,
-  unidadesRendidas: number
+  distribucion: Record<TipoHamburguesa, number>
 ): Promise<Cajon> {
-  return apiFetch<Cajon>(`${API_BASE}/cajones/${id}/unidades`, {
+  const payload: RegistrarRendimientoDto = { distribucion };
+  return apiFetch<Cajon>(`${API_BASE}/cajones/${id}/rendimiento`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ unidadesRendidas }),
+    body: JSON.stringify(payload),
   });
 }
 
@@ -55,7 +68,7 @@ export async function fetchPedidos(): Promise<Pedido[]> {
 
 export async function crearPedido(payload: {
   clienteNombre: string;
-  cantidadHamburguesas: number;
+  items: CreateItemPedidoDto[];
   precioTotal: number;
   fechaEntrega?: string;
 }): Promise<Pedido> {

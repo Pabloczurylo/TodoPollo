@@ -7,12 +7,14 @@ import { Modal } from '../ui/Modal';
 import { useAppData } from '../../hooks/useAppData';
 import { useModal } from '../../hooks/useModal';
 import { AlertTriangle, Loader2 } from 'lucide-react';
+import type { StockPorTipo } from '@todopolloyplus/shared';
 
 /**
  * AppDataContext — shared across all child routes via Outlet context
  */
 export interface AppDataContextType {
   stockActual: number;
+  stockPorTipo: StockPorTipo[];
   cajones: ReturnType<typeof useAppData>['cajones'];
   pedidos: ReturnType<typeof useAppData>['pedidos'];
   gastos: ReturnType<typeof useAppData>['gastos'];
@@ -27,6 +29,7 @@ export interface AppDataContextType {
 export function Layout() {
   const {
     stockActual,
+    stockPorTipo,
     cajones,
     pedidos,
     gastos,
@@ -73,6 +76,7 @@ export function Layout() {
 
   const context: AppDataContextType = {
     stockActual,
+    stockPorTipo,
     cajones,
     pedidos,
     gastos,

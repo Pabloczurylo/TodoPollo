@@ -1,4 +1,4 @@
-import type { EstadoPedido, CategoriaGasto } from '../types/index.js';
+import type { EstadoPedido, CategoriaGasto, TipoHamburguesa } from '../types/index.js';
 
 /**
  * Formatea un número como moneda en Pesos Argentinos (ARS)
@@ -91,5 +91,37 @@ export function getCategoriaGastoLabel(categoria: CategoriaGasto | string): stri
       return 'Otros Gastos';
     default:
       return categoria;
+  }
+}
+
+/**
+ * Retorna el label amigable para los tipos de hamburguesa
+ */
+export function getTipoHamburguesaLabel(tipo: TipoHamburguesa): string {
+  switch (tipo) {
+    case 'JAMON_QUESO':
+      return 'Jamón y Queso';
+    case 'ESPINACA_QUESO':
+      return 'Espinaca y Queso';
+    case 'ZANAHORIA_QUESO':
+      return 'Zanahoria y Queso';
+    default:
+      return tipo;
+  }
+}
+
+/**
+ * Emoji representativo para cada tipo de hamburguesa
+ */
+export function getTipoHamburguesaEmoji(tipo: TipoHamburguesa): string {
+  switch (tipo) {
+    case 'JAMON_QUESO':
+      return '🧀';
+    case 'ESPINACA_QUESO':
+      return '🌿';
+    case 'ZANAHORIA_QUESO':
+      return '🥕';
+    default:
+      return '🍔';
   }
 }
