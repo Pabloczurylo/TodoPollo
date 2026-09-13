@@ -541,6 +541,11 @@ app.delete('/api/gastos/:id', async (req: Request, res: Response) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`🍗 TodoPollo y Más API corriendo en http://localhost:${PORT}`);
-});
+// Escucha solo en desarrollo local; en Vercel el runtime importa el handler directamente
+if (process.env.VERCEL !== '1') {
+  app.listen(PORT, () => {
+    console.log(`🍗 TodoPollo y Más API corriendo en http://localhost:${PORT}`);
+  });
+}
+
+export default app;
