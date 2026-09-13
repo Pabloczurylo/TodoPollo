@@ -1,0 +1,91 @@
+import type { Cajon, Pedido, Gasto, CategoriaGasto, EstadoPedido } from '@todopolloyplus/shared';
+
+export const API_BASE = 'http://localhost:3001/api';
+
+// ── Generic helper ──────────────────────────────────────────────
+async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(url, options);
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || 'Error desconocido del servidor');
+  return json.data as T;
+}
+
+// ── Stock ────────────────────────────────────────────────────────
+export async function fetchStock(): Promise<{ cantidadActual: number }> {
+  const data = await apiFetch<{ stock: { cantidadActual: number } }>(`${API_BASE}/stock`);
+  return data.stock;
+}
+
+// ── Cajones ──────────────────────────────────────────────────────
+export async function fetchCajones(): Promise<Cajon[]> {
+  return apiFetch<Cajon[]>(`${API_BASE}/cajones`);
+}
+
+export async function crearCajon(payload: {
+  costoTotal: number;
+  fecha: string;
+  proveedor?: string;
+}): Promise<Cajon> {
+  return apiFetch<Cajon>(`${API_BASE}/cajones`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function actualizarUnidadesCajon(
+  id: string,
+  unidadesRendidas: number
+): Promise<Cajon> {
+  return apiFetch<Cajon>(`${API_BASE}/cajones/${id}/unidades`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ unidadesRendidas }),
+  });
+}
+
+// ── Pedidos ──────────────────────────────────────────────────────
+export async function fetchPedidos(): Promise<Pedido[]> {
+  return apiFetch<Pedido[]>(`${API_BASE}/pedidos`);
+}
+
+export async function crearPedido(payload: {
+  clienteNombre: string;
+  cantidadHamburguesas: number;
+  precioTotal: number;
+  fechaEntrega?: string;
+}): Promise<Pedido> {
+  return apiFetch<Pedido>(`${API_BASE}/pedidos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function actualizarEstadoPedido(
+  id: string,
+  estado: EstadoPedido
+): Promise<Pedido> {
+  return apiFetch<Pedido>(`${API_BASE}/pedidos/${id}/estado`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ estado }),
+  });
+}
+
+// ── Gastos ───────────────────────────────────────────────────────
+export async function fetchGastos(): Promise<Gasto[]> {
+  return apiFetch<Gasto[]>(`${API_BASE}/gastos`);
+}
+
+export async function crearGasto(payload: {
+  concepto: string;
+  monto: number;
+  categoria: CategoriaGasto;
+}): Promise<Gasto> {
+  return apiFetch<Gasto>(`${API_BASE}/gastos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
