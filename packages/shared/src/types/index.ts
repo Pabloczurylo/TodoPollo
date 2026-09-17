@@ -48,7 +48,7 @@ export interface RegistrarRendimientoDto {
 // 2. STOCK E INVENTARIO
 // ==========================================
 
-export type TipoMovimientoStock = 'INGRESO_PRODUCCION' | 'EGRESO_PEDIDO' | 'AJUSTE_MANUAL';
+export type TipoMovimientoStock = 'INGRESO_PRODUCCION' | 'EGRESO_PEDIDO' | 'AJUSTE_MANUAL' | 'CONSUMO_INTERNO';
 
 export interface Stock {
   id: string;
@@ -78,6 +78,12 @@ export interface MovimientoStock {
 export interface AjusteStockDto {
   nuevaCantidad: number;
   motivo: string;
+}
+
+export interface ConsumoInternoDto {
+  /** Cantidad por tipo de hamburguesa consumida (solo los tipos con cantidad > 0) */
+  distribucion: Partial<Record<TipoHamburguesa, number>>;
+  notas?: string;
 }
 
 // ==========================================

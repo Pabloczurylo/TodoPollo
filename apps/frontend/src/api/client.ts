@@ -126,3 +126,19 @@ export async function actualizarGasto(
 export async function eliminarGasto(id: string): Promise<void> {
   await apiFetch<null>(`${API_BASE}/gastos/${id}`, { method: 'DELETE' });
 }
+
+// ── Consumo Interno ──────────────────────────────────────────
+export async function registrarConsumoInterno(
+  distribucion: Partial<Record<TipoHamburguesa, number>>,
+  notas?: string
+): Promise<{ cantidadActual: number; totalConsumido: number }> {
+  return apiFetch<{ cantidadActual: number; totalConsumido: number }>(
+    `${API_BASE}/stock/consumo-interno`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ distribucion, notas }),
+    }
+  );
+}
+
