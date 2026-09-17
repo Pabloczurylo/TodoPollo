@@ -76,6 +76,7 @@ enum TipoMovimientoStock {
   INGRESO_PRODUCCION
   EGRESO_PEDIDO
   AJUSTE_MANUAL
+  CONSUMO_INTERNO
 }
 
 model MovimientoStock {

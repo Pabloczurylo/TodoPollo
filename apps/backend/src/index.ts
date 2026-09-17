@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { Prisma } from '@prisma/client';
+import { Prisma, TipoMovimientoStock as PrismaMovimientoTipo } from '@prisma/client';
 import { prisma } from './db.js';
 import {
   CreateCajonDto,
@@ -539,6 +539,83 @@ app.delete('/api/gastos/:id', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error deleting gasto:', error);
     res.status(500).json({ success: false, error: 'Error al eliminar el gasto' });
+  }
+});
+
+// ============================================================
+// CONSUMO INTERNO (hamburguesas consumidas por el equipo)
+// ============================================================
+app.post('/api/stock/consumo-interno', async (req: Request, res: Response) => {
+  try {
+    const { distribucion, notas } = req.body as {
+      distribucion: Partial<Record<TipoHamburguesa, number>>;
+      notas?: string;
+    };
+
+    // Validar que al menos un tipo tenga cantidad > 0
+    const itemsValidos = Object.entries(distribucion).filter(([, v]) => v && v > 0) as [TipoHamburguesa, number][];
+    if (itemsValidos.length === 0) {
+      return res.status(400).json({ success: false, error: 'Ingresá al menos una hamburguesa para registrar el consumo.' });
+    }
+
+    const totalConsumo = itemsValidos.reduce((s, [, v]) => s + v, 0);
+
+    const result = await prisma.$transaction(async (tx) => {
+      // Verificar stock suficiente
+      let stock = await tx.stock.findFirst();
+      if (!stock) {
+        stock = await tx.stock.create({ data: { cantidadActual: 0 } });
+      }
+
+      if (stock.cantidadActual < totalConsumo) {
+        throw new Error(`Stock insuficiente. Tenés ${stock.cantidadActual} hamburguesas disponibles y querés consumir ${totalConsumo}.`);
+      }
+
+      // Verificar stock suficiente por tipo
+      await ensureStockPorTipo(tx);
+      for (const [tipo, cantidad] of itemsValidos) {
+        const stockTipo = await tx.stockPorTipo.findUnique({ where: { tipo } });
+        if (!stockTipo || stockTipo.cantidadActual < cantidad) {
+          throw new Error(`Stock insuficiente de ${tipo}. Disponible: ${stockTipo?.cantidadActual ?? 0}, requerido: ${cantidad}.`);
+        }
+      }
+
+      // Descontar stock total
+      const balancePosterior = stock.cantidadActual - totalConsumo;
+      await tx.stock.update({
+        where: { id: stock.id },
+        data: { cantidadActual: balancePosterior },
+      });
+
+      // Registrar movimiento
+      const motivoDesc = itemsValidos
+        .map(([k, v]) => `${v} ${k.replace('_', '/')}`)
+        .join(', ');
+      await tx.movimientoStock.create({
+        data: {
+          tipo: PrismaMovimientoTipo.CONSUMO_INTERNO,
+          cantidad: -totalConsumo,
+          balancePosterior,
+          motivo: `Consumo interno: ${motivoDesc}${notas ? ` — ${notas}` : ''}`,
+        },
+      });
+
+      // Descontar por tipo
+      for (const [tipo, cantidad] of itemsValidos) {
+        await tx.stockPorTipo.update({
+          where: { tipo },
+          data: { cantidadActual: { decrement: cantidad } },
+        });
+      }
+
+      return { cantidadActual: balancePosterior, totalConsumido: totalConsumo };
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error registrando consumo interno:', error);
+    const message = error instanceof Error ? error.message : 'Error al registrar el consumo interno';
+    res.status(400).json({ success: false, error: message });
   }
 });
 

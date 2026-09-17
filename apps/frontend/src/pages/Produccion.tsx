@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { Layers, Plus, Trash2 } from 'lucide-react';
 import { formatCurrency, formatDate, getTipoHamburguesaLabel, getTipoHamburguesaEmoji, TIPOS_HAMBURGUESA } from '@todopolloyplus/shared';
 import type { TipoHamburguesa } from '@todopolloyplus/shared';
-import { crearCajon, registrarRendimientoCajon, eliminarCajon } from '../api/client';
+import { crearCajon, registrarRendimientoCajon, eliminarCajon, registrarConsumoInterno } from '../api/client';
 import type { AppDataContextType } from '../components/layout/Layout';
 
 type DistribucionPorTipo = Record<TipoHamburguesa, string>;
@@ -24,6 +24,12 @@ export function Produccion() {
   // Estado para el panel de rendimiento por tipo
   const [registrandoRendimientoId, setRegistrandoRendimientoId] = useState<string | null>(null);
   const [distribucion, setDistribucion] = useState<DistribucionPorTipo>(distribucionVacia());
+
+  // Estado para el consumo interno
+  const [consumoDistribucion, setConsumoDistribucion] = useState<DistribucionPorTipo>(distribucionVacia());
+  const [consumoNotas, setConsumoNotas] = useState('');
+  const [guardandoConsumo, setGuardandoConsumo] = useState(false);
+  const totalConsumo = TIPOS_HAMBURGUESA.reduce((s, t) => s + (parseInt(consumoDistribucion[t]) || 0), 0);
 
   const handleRegistrarCajon = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,10 +107,36 @@ export function Produccion() {
     );
   };
 
+  const handleRegistrarConsumo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (totalConsumo <= 0) {
+      showAlert('Error', 'Ingresá al menos una hamburguesa para registrar el consumo.', 'error');
+      return;
+    }
+    setGuardandoConsumo(true);
+    try {
+      const dist: Partial<Record<TipoHamburguesa, number>> = {};
+      for (const tipo of TIPOS_HAMBURGUESA) {
+        const n = parseInt(consumoDistribucion[tipo]) || 0;
+        if (n > 0) dist[tipo] = n;
+      }
+      await registrarConsumoInterno(dist, consumoNotas || undefined);
+      await fetchAll();
+      setConsumoDistribucion(distribucionVacia());
+      setConsumoNotas('');
+      showAlert('✅ Consumo Registrado', `Se descontaron ${totalConsumo} hamburguesas del stock como consumo interno.`, 'success');
+    } catch (err: unknown) {
+      showAlert('Error', err instanceof Error ? err.message : 'No se pudo registrar el consumo.', 'error');
+    } finally {
+      setGuardandoConsumo(false);
+    }
+  };
+
   return (
-    <div className="md:grid md:grid-cols-2 md:gap-8 items-start space-y-4 md:space-y-0">
-      {/* Formulario de registro de Cajón */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+    <div className="space-y-4 md:space-y-6">
+      <div className="md:grid md:grid-cols-2 md:gap-8 items-start space-y-4 md:space-y-0">
+        {/* Formulario de registro de Cajón */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
         <div className="flex items-center gap-2 mb-3">
           <Layers className="text-amber-500" size={20} />
           <h2 className="font-bold text-slate-800 text-sm">Ingreso de Cajón de Pechugas</h2>
@@ -163,8 +195,77 @@ export function Produccion() {
         </form>
       </div>
 
+      {/* Formulario de Consumo Interno */}
+      <div className="bg-white rounded-xl border border-rose-200 shadow-sm p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-lg">🍔</span>
+          <div>
+            <h2 className="font-bold text-slate-800 text-sm">Consumo Interno</h2>
+            <p className="text-[10px] text-slate-400">Hamburguesas que comemos nosotros (no se registran como venta)</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleRegistrarConsumo} className="space-y-3">
+          {/* Inputs por tipo */}
+          <div className="space-y-2">
+            {TIPOS_HAMBURGUESA.map((tipo) => (
+              <div key={tipo} className="flex items-center gap-2">
+                <span className="text-lg w-7 text-center">{getTipoHamburguesaEmoji(tipo)}</span>
+                <span className="flex-1 text-xs text-slate-700 font-medium">{getTipoHamburguesaLabel(tipo)}</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={consumoDistribucion[tipo]}
+                  onChange={(e) => setConsumoDistribucion((prev) => ({ ...prev, [tipo]: e.target.value }))}
+                  placeholder="0"
+                  className="w-20 text-sm font-semibold text-center px-2 py-1.5 rounded-lg border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-400"
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Notas opcionales */}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">
+              Notas (Opcional)
+            </label>
+            <input
+              type="text"
+              value={consumoNotas}
+              onChange={(e) => setConsumoNotas(e.target.value)}
+              placeholder="Ej: Almuerzo del equipo, prueba de calidad…"
+              className="w-full text-sm px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-rose-400"
+            />
+          </div>
+
+          {/* Total a descontar */}
+          {totalConsumo > 0 && (
+            <div className="flex justify-between items-center text-xs font-bold text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">
+              <span>Total a descontar del stock:</span>
+              <span>{totalConsumo} hamburguesas</span>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={totalConsumo === 0 || guardandoConsumo}
+            className="w-full bg-rose-500 hover:bg-rose-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg shadow active:scale-[0.98] transition flex items-center justify-center gap-2"
+          >
+            {guardandoConsumo ? (
+              <span className="text-sm">Registrando…</span>
+            ) : (
+              <>
+                <span className="text-base">🍔</span>
+                <span>Registrar Consumo Interno</span>
+              </>
+            )}
+          </button>
+        </form>
+      </div>
+    </div>
+
       {/* Listado de Cajones */}
-      <div className="bg-white/50 p-1 rounded-2xl md:bg-transparent md:p-0">
+      <div className="bg-white/50 p-1 rounded-2xl md:bg-transparent md:p-0 md:col-span-2">
         <h3 className="text-xs md:text-sm font-bold uppercase tracking-wider text-slate-400 mb-3 px-1">
           Cajones Registrados
         </h3>
