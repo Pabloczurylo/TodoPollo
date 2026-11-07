@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { Layers, Plus, Trash2 } from 'lucide-react';
 import { formatCurrency, formatDate, getTipoHamburguesaLabel, getTipoHamburguesaEmoji, TIPOS_HAMBURGUESA } from '@todopolloyplus/shared';
 import type { TipoHamburguesa } from '@todopolloyplus/shared';
-import { crearCajon, registrarRendimientoCajon, eliminarCajon, registrarConsumoInterno } from '../api/client';
+import { crearCajon, registrarRendimientoCajon, eliminarCajon, registrarConsumoInterno, ajustarStock } from '../api/client';
 import type { AppDataContextType } from '../components/layout/Layout';
 
 type DistribucionPorTipo = Record<TipoHamburguesa, string>;
@@ -15,7 +15,43 @@ const distribucionVacia = (): DistribucionPorTipo => ({
 });
 
 export function Produccion() {
-  const { cajones, fetchAll, showAlert, showConfirm } = useOutletContext<AppDataContextType>();
+  const { cajones, stockPorTipo, reservadoPorTipo, fetchAll, showAlert, showConfirm } = useOutletContext<AppDataContextType>();
+
+  // Estado para el ajuste manual de stock (si el tipo no fue editado, se muestra el stock actual)
+  const [ajusteValores, setAjusteValores] = useState<Partial<Record<TipoHamburguesa, string>>>({});
+  const [ajusteNotas, setAjusteNotas] = useState('');
+  const [guardandoAjuste, setGuardandoAjuste] = useState(false);
+  const stockDe = (tipo: TipoHamburguesa) => stockPorTipo.find((s) => s.tipo === tipo)?.cantidadActual ?? 0;
+  const valorAjuste = (tipo: TipoHamburguesa) => ajusteValores[tipo] ?? String(stockDe(tipo));
+  const tiposModificados = TIPOS_HAMBURGUESA.filter(
+    (t) => ajusteValores[t] !== undefined && ajusteValores[t] !== '' && parseInt(ajusteValores[t]!) !== stockDe(t)
+  );
+
+  const handleAjustarStock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (tiposModificados.length === 0) return;
+    const dist: Partial<Record<TipoHamburguesa, number>> = {};
+    for (const tipo of tiposModificados) {
+      const n = parseInt(ajusteValores[tipo]!);
+      if (isNaN(n) || n < 0) {
+        showAlert('Error', 'Las cantidades deben ser números enteros mayores o iguales a 0.', 'error');
+        return;
+      }
+      dist[tipo] = n;
+    }
+    setGuardandoAjuste(true);
+    try {
+      const res = await ajustarStock(dist, ajusteNotas || undefined);
+      await fetchAll();
+      setAjusteValores({});
+      setAjusteNotas('');
+      showAlert('✅ Stock Actualizado', `El stock total ahora es de ${res.cantidadActual} hamburguesas.`, 'success');
+    } catch (err: unknown) {
+      showAlert('Error', err instanceof Error ? err.message : 'No se pudo ajustar el stock.', 'error');
+    } finally {
+      setGuardandoAjuste(false);
+    }
+  };
 
   const [nuevoCajonCosto, setNuevoCajonCosto] = useState('');
   const [nuevoCajonFecha, setNuevoCajonFecha] = useState(new Date().toISOString().slice(0, 10));
@@ -259,6 +295,63 @@ export function Produccion() {
                 <span>Registrar Consumo Interno</span>
               </>
             )}
+          </button>
+        </form>
+      </div>
+
+      {/* Ajuste manual de Stock */}
+      <div className="bg-white rounded-xl border border-sky-200 shadow-sm p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-lg">📦</span>
+          <div>
+            <h2 className="font-bold text-slate-800 text-sm">Actualizar Stock</h2>
+            <p className="text-[10px] text-slate-400">Corregí la cantidad real que hay de cada tipo (reemplaza el valor actual)</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleAjustarStock} className="space-y-3">
+          <div className="space-y-2">
+            {TIPOS_HAMBURGUESA.map((tipo) => {
+              const reservado = reservadoPorTipo[tipo] ?? 0;
+              return (
+                <div key={tipo} className="flex items-center gap-2">
+                  <span className="text-lg w-7 text-center">{getTipoHamburguesaEmoji(tipo)}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-slate-700 font-medium">{getTipoHamburguesaLabel(tipo)}</p>
+                    <p className="text-[10px] text-slate-400">
+                      Actual: {stockDe(tipo)}
+                      {reservado > 0 ? ` · Reservado: ${reservado}` : ''}
+                    </p>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    value={valorAjuste(tipo)}
+                    onChange={(e) => setAjusteValores((prev) => ({ ...prev, [tipo]: e.target.value }))}
+                    className="w-20 text-sm font-semibold text-center px-2 py-1.5 rounded-lg border border-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Motivo (Opcional)</label>
+            <input
+              type="text"
+              value={ajusteNotas}
+              onChange={(e) => setAjusteNotas(e.target.value)}
+              placeholder="Ej: Conteo físico, error de carga…"
+              className="w-full text-sm px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-400"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={tiposModificados.length === 0 || guardandoAjuste}
+            className="w-full bg-sky-500 hover:bg-sky-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg shadow active:scale-[0.98] transition"
+          >
+            {guardandoAjuste ? 'Guardando…' : 'Actualizar Stock'}
           </button>
         </form>
       </div>

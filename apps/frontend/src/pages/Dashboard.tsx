@@ -16,8 +16,10 @@ import { ReporteSeguimiento } from '../components/dashboard/ReporteSeguimiento';
 import type { AppDataContextType } from '../components/layout/Layout';
 
 export function Dashboard() {
-  const { cajones, pedidos, gastos, totalVentas, totalGastos, pedidosPendientesCount, stockActual, stockPorTipo } =
+  const { cajones, pedidos, gastos, totalVentas, totalGastos, pedidosPendientesCount, stockActual, stockPorTipo, reservadoPorTipo } =
     useOutletContext<AppDataContextType>();
+
+  const totalReservado = Object.values(reservadoPorTipo).reduce((s, n) => s + n, 0);
 
   const navigate = useNavigate();
 
@@ -41,7 +43,10 @@ export function Dashboard() {
           <span className="text-lg text-amber-100 font-medium">hamburguesas</span>
         </div>
         <p className="text-xs text-amber-100/90 mt-2 flex items-center gap-1">
-          <TrendingUp size={14} /> Listo para despachar y tomar nuevos pedidos
+          <TrendingUp size={14} />{' '}
+          {totalReservado > 0
+            ? `${totalReservado} reservadas en pedidos pendientes · ${stockActual - totalReservado} libres`
+            : 'Listo para despachar y tomar nuevos pedidos'}
         </p>
         {/* Breakdown por tipo */}
         {stockPorTipo.length > 0 && (
@@ -53,6 +58,11 @@ export function Dashboard() {
                 <p className="text-[9px] text-amber-100 leading-tight mt-0.5">
                   {getTipoHamburguesaLabel(s.tipo as TipoHamburguesa)}
                 </p>
+                {(reservadoPorTipo[s.tipo as TipoHamburguesa] ?? 0) > 0 && (
+                  <p className="text-[10px] font-bold bg-white/25 rounded-full px-1.5 py-0.5 mt-1 inline-block">
+                    🔒 {reservadoPorTipo[s.tipo as TipoHamburguesa]} reserv.
+                  </p>
+                )}
               </div>
             ))}
           </div>

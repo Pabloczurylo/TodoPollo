@@ -619,6 +619,82 @@ app.post('/api/stock/consumo-interno', async (req: Request, res: Response) => {
   }
 });
 
+// ============================================================
+// AJUSTE MANUAL DE STOCK (fija la cantidad real por tipo)
+// ============================================================
+app.put('/api/stock/ajuste', async (req: Request, res: Response) => {
+  try {
+    const { distribucion, notas } = req.body as {
+      distribucion: Partial<Record<TipoHamburguesa, number>>;
+      notas?: string;
+    };
+
+    // Validar valores: enteros >= 0 (solo se ajustan los tipos enviados)
+    const nuevos: [TipoHamburguesa, number][] = [];
+    for (const tipo of TIPOS_HAMBURGUESA) {
+      const valor = distribucion?.[tipo];
+      if (valor === undefined || valor === null) continue;
+      if (!Number.isInteger(valor) || valor < 0) {
+        return res.status(400).json({
+          success: false,
+          error: `Cantidad inválida para ${tipo}. Debe ser un número entero mayor o igual a 0.`,
+        });
+      }
+      nuevos.push([tipo, valor]);
+    }
+    if (nuevos.length === 0) {
+      return res.status(400).json({ success: false, error: 'Indicá la cantidad de al menos un tipo de hamburguesa.' });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      let stock = await tx.stock.findFirst();
+      if (!stock) {
+        stock = await tx.stock.create({ data: { cantidadActual: 0 } });
+      }
+      await ensureStockPorTipo(tx);
+
+      const cambios: string[] = [];
+      const filasPrevias = await tx.stockPorTipo.findMany();
+      const cantidades = new Map<string, number>(filasPrevias.map((f) => [f.tipo, f.cantidadActual]));
+      const updates = [];
+      for (const [tipo, nuevaCantidad] of nuevos) {
+        const previa = cantidades.get(tipo) ?? 0;
+        if (previa !== nuevaCantidad) {
+          cambios.push(`${tipo.replace('_', '/')}: ${previa} → ${nuevaCantidad}`);
+          cantidades.set(tipo, nuevaCantidad);
+          updates.push(tx.stockPorTipo.update({ where: { tipo }, data: { cantidadActual: nuevaCantidad } }));
+        }
+      }
+      await Promise.all(updates);
+
+      // El total siempre se recalcula como la suma de los tipos
+      const nuevoTotal = Array.from(cantidades.values()).reduce((s, n) => s + n, 0);
+      const diferencia = nuevoTotal - stock.cantidadActual;
+
+      await tx.stock.update({ where: { id: stock.id }, data: { cantidadActual: nuevoTotal } });
+
+      if (cambios.length > 0 || diferencia !== 0) {
+        await tx.movimientoStock.create({
+          data: {
+            tipo: PrismaMovimientoTipo.AJUSTE_MANUAL,
+            cantidad: diferencia,
+            balancePosterior: nuevoTotal,
+            motivo: `Ajuste manual de stock: ${cambios.join(', ') || 'recálculo del total'}${notas ? ` — ${notas}` : ''}`,
+          },
+        });
+      }
+
+      return { cantidadActual: nuevoTotal, diferencia };
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error ajustando stock:', error);
+    const message = error instanceof Error ? error.message : 'Error al ajustar el stock';
+    res.status(400).json({ success: false, error: message });
+  }
+});
+
 // Escucha solo en desarrollo local; en Vercel el runtime importa el handler directamente
 if (process.env.VERCEL !== '1') {
   app.listen(PORT, () => {

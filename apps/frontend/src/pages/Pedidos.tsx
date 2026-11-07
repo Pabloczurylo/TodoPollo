@@ -21,7 +21,7 @@ const cantidadesVacias = (): CantidadesPorTipo => ({
 });
 
 export function Pedidos() {
-  const { pedidos, stockPorTipo, stockActual, fetchAll, showAlert, showConfirm } =
+  const { pedidos, stockPorTipo, reservadoPorTipo, stockActual, fetchAll, showAlert, showConfirm } =
     useOutletContext<AppDataContextType>();
 
   const [cliente, setCliente] = useState('');
@@ -154,12 +154,23 @@ export function Pedidos() {
             <div className="space-y-2">
               {TIPOS_HAMBURGUESA.map((tipo) => {
                 const stockTipo = stockPorTipo.find((s) => s.tipo === tipo)?.cantidadActual ?? 0;
+                const reservadoTipo = reservadoPorTipo[tipo] ?? 0;
+                const libreTipo = stockTipo - reservadoTipo;
                 return (
                   <div key={tipo} className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2">
                     <span className="text-xl w-7 text-center">{getTipoHamburguesaEmoji(tipo)}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-slate-700 truncate">{getTipoHamburguesaLabel(tipo)}</p>
-                      <p className="text-[10px] text-slate-400">Stock: {stockTipo}</p>
+                      <p className="text-[10px] text-slate-400">
+                        Stock: {stockTipo} ·{' '}
+                        <span className={reservadoTipo > 0 ? 'text-amber-600 font-semibold' : ''}>
+                          Reservado: {reservadoTipo}
+                        </span>{' '}
+                        ·{' '}
+                        <span className={libreTipo < 0 ? 'text-rose-600 font-semibold' : 'text-emerald-600 font-semibold'}>
+                          Libre: {libreTipo}
+                        </span>
+                      </p>
                     </div>
                     <input
                       type="number"

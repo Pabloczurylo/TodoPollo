@@ -7,7 +7,7 @@ import { Modal } from '../ui/Modal';
 import { useAppData } from '../../hooks/useAppData';
 import { useModal } from '../../hooks/useModal';
 import { AlertTriangle, Loader2 } from 'lucide-react';
-import type { StockPorTipo } from '@todopolloyplus/shared';
+import type { StockPorTipo, TipoHamburguesa } from '@todopolloyplus/shared';
 
 /**
  * AppDataContext — shared across all child routes via Outlet context
@@ -15,6 +15,8 @@ import type { StockPorTipo } from '@todopolloyplus/shared';
 export interface AppDataContextType {
   stockActual: number;
   stockPorTipo: StockPorTipo[];
+  /** Hamburguesas comprometidas en pedidos aún no entregados (pendientes / en preparación), por tipo */
+  reservadoPorTipo: Record<TipoHamburguesa, number>;
   cajones: ReturnType<typeof useAppData>['cajones'];
   pedidos: ReturnType<typeof useAppData>['pedidos'];
   gastos: ReturnType<typeof useAppData>['gastos'];
@@ -74,9 +76,22 @@ export function Layout() {
     );
   }
 
+  const reservadoPorTipo: Record<TipoHamburguesa, number> = {
+    JAMON_QUESO: 0,
+    ESPINACA_QUESO: 0,
+    ZANAHORIA_QUESO: 0,
+  };
+  for (const p of pedidos) {
+    if (p.estado === 'ENTREGADO' || p.estado === 'CANCELADO') continue;
+    for (const item of p.items ?? []) {
+      reservadoPorTipo[item.tipo as TipoHamburguesa] += item.cantidad;
+    }
+  }
+
   const context: AppDataContextType = {
     stockActual,
     stockPorTipo,
+    reservadoPorTipo,
     cajones,
     pedidos,
     gastos,
