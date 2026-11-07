@@ -13,6 +13,7 @@ import {
 import { formatCurrency, formatDate, getTipoHamburguesaLabel, getTipoHamburguesaEmoji } from '@todopolloyplus/shared';
 import type { TipoHamburguesa } from '@todopolloyplus/shared';
 import { ReporteSeguimiento } from '../components/dashboard/ReporteSeguimiento';
+import { Graficos } from '../components/dashboard/Graficos';
 import type { AppDataContextType } from '../components/layout/Layout';
 
 export function Dashboard() {
@@ -169,6 +170,15 @@ export function Dashboard() {
 
       {/* Reporte de Seguimiento */}
       <ReporteSeguimiento cajones={cajones} pedidos={pedidos} gastos={gastos} />
+
+      {/* Gráficos y métricas */}
+      <Graficos
+        cajones={cajones}
+        pedidos={pedidos}
+        gastos={gastos}
+        stockPorTipo={stockPorTipo}
+        reservadoPorTipo={reservadoPorTipo}
+      />
 
       {/* Alerta de pedidos pendientes */}
       {pedidosPendientesCount > 0 && (
